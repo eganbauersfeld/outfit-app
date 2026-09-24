@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { exportBackup, importBackup } from '../db';
 import { todayKey } from '../dates';
 import { useSettings, useStore, type Accent } from '../store';
+import { getSavedLocation } from '../weather';
 import { Sheet } from './Common';
 
 const ACCENTS: { value: Accent; label: string; swatch: string }[] = [
@@ -10,7 +11,8 @@ const ACCENTS: { value: Accent; label: string; swatch: string }[] = [
   { value: 'green', label: 'Green', swatch: '#2E7D5B' },
 ];
 
-export function SettingsSheet({ onClose }: { onClose: () => void }) {
+export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void; onPickLocation: () => void }) {
+  const location = getSavedLocation();
   const { accent, setAccent, columns, setColumns } = useSettings();
   const { reload, items, logs } = useStore();
   const [msg, setMsg] = useState<string | null>(null);
@@ -63,6 +65,13 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="field">
+        <span className="sublabel">Weather location</span>
+        <button type="button" className="chip" onClick={onPickLocation} style={{ alignSelf: 'flex-start', minHeight: 36, display: 'flex', alignItems: 'center', color: 'var(--ink)' }}>
+          {location?.source === 'manual' ? location.name : 'Current location'} · Change
+        </button>
       </div>
 
       <div className="field">

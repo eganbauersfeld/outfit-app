@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ThemeToggle } from '../components/Common';
 import { GearIcon, SparkleIcon, WeatherGlyph } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
+import { LocationSheet } from '../components/LocationSheet';
 import { LogPicker } from '../components/LogPicker';
 import { SettingsSheet } from '../components/SettingsSheet';
 import { todayKey } from '../dates';
@@ -16,7 +17,8 @@ const TILE_LABEL: Record<Category, string> = { Top: 'Top', Bottom: 'Bottom', Out
 
 export function Today() {
   const { items, logs, itemsById } = useStore();
-  const { status, weather, error, refresh } = useWeather();
+  const { status, weather, error, needsLocation, denied, refresh } = useWeather();
+  const [locationOpen, setLocationOpen] = useState(false);
   const [ideas, setIdeas] = useState<string[] | null>(null);
   const [picker, setPicker] = useState<Category | null>(null);
   const [newIn, setNewIn] = useState<Category | null>(null);
@@ -56,17 +58,44 @@ export function Today() {
             </div>
             <div style={{ fontWeight: 600, fontSize: 11, letterSpacing: '0.04em', color: 'var(--muted)' }}>
               Feels like {weather.feelsLike}° · H:{weather.high}° L:{weather.low}°
+              {weather.place && (
+                <>
+                  {' · '}
+                  <button type="button" onClick={() => setLocationOpen(true)} style={{ textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                    {weather.place}
+                  </button>
+                </>
+              )}
             </div>
           </>
         ) : (
-          <button type="button" style={{ textAlign: 'left', padding: '6px 0' }} onClick={() => refresh(true)}>
+          <div style={{ padding: '6px 0' }}>
             <div className="serif emboss muted" style={{ fontSize: 46, lineHeight: 0.9 }}>
               {status === 'loading' ? '—°' : '?°'}
             </div>
-            <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-              {status === 'loading' ? 'Getting the forecast…' : `${error ?? 'Weather unavailable'} Tap to retry.`}
+            <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
+              {status === 'loading' ? (
+                'Getting the forecast…'
+              ) : (
+                <>
+                  {error ?? 'Weather unavailable.'}
+                  {denied && ' On iPhone: Settings → Privacy & Security → Location Services → Safari Websites → While Using.'}
+                </>
+              )}
             </div>
-          </button>
+            {status === 'error' && (
+              <div style={{ display: 'flex', gap: 16, marginTop: 2 }}>
+                <button type="button" className="text-btn" onClick={() => refresh(true)}>
+                  Try again
+                </button>
+                {needsLocation && (
+                  <button type="button" className="text-btn" style={{ color: 'var(--accent)' }} onClick={() => setLocationOpen(true)}>
+                    Pick a city instead
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </header>
 
@@ -177,7 +206,16 @@ export function Today() {
           }}
         />
       )}
-      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsSheet
+          onClose={() => setSettingsOpen(false)}
+          onPickLocation={() => {
+            setSettingsOpen(false);
+            setLocationOpen(true);
+          }}
+        />
+      )}
+      {locationOpen && <LocationSheet onClose={() => setLocationOpen(false)} />}
     </>
   );
 }

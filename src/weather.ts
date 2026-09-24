@@ -12,6 +12,8 @@ export interface Weather {
   wet: boolean;
   hours: { time: string; temp: number; icon: WeatherIcon }[];
   fetchedAt: number;
+  /** Set when the forecast is for a city he picked rather than device location. */
+  place?: string;
 }
 
 // WMO weather codes, as used by Open-Meteo.
@@ -56,13 +58,77 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
+// ---------- Location: device GPS, or a city he picked (which then sticks). ----------
+
+export interface SavedLocation {
+  lat: number;
+  lon: number;
+  name?: string;
+  source: 'device' | 'manual';
+}
+
+export interface Place {
+  name: string;
+  region: string;
+  lat: number;
+  lon: number;
+}
+
+export const LOCATION_EVENT = 'outfit:location-changed';
+
+export function getSavedLocation(): SavedLocation | null {
+  const loc = readJson<SavedLocation>(COORDS_KEY);
+  return loc ? { ...loc, source: loc.source ?? 'device' } : null;
+}
+
+export function setManualLocation(place: Place) {
+  writeJson(COORDS_KEY, { lat: place.lat, lon: place.lon, name: place.name, source: 'manual' } satisfies SavedLocation);
+  dispatchEvent(new Event(LOCATION_EVENT));
+}
+
+export function switchToDeviceLocation() {
+  const loc = getSavedLocation();
+  if (loc) writeJson(COORDS_KEY, { ...loc, name: undefined, source: 'device' });
+  dispatchEvent(new Event(LOCATION_EVENT));
+}
+
+/** City search via Open-Meteo's keyless geocoder. */
+export async function searchPlaces(query: string): Promise<Place[]> {
+  const params = new URLSearchParams({ name: query, count: '6', language: 'en', format: 'json' });
+  const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
+  if (!res.ok) throw new Error('Search failed');
+  const j = await res.json();
+  return (j.results ?? []).map((r: { name: string; admin1?: string; country?: string; latitude: number; longitude: number }) => ({
+    name: r.name,
+    region: [r.admin1, r.country].filter(Boolean).join(', '),
+    lat: r.latitude,
+    lon: r.longitude,
+  }));
+}
+
+class LocationError extends Error {
+  constructor(
+    message: string,
+    public denied = false,
+  ) {
+    super(message);
+  }
+}
+
 function getPosition(): Promise<{ lat: number; lon: number }> {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error('No geolocation'));
+    if (!navigator.geolocation) return reject(new LocationError('This browser can’t share location.'));
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
-      reject,
-      { maximumAge: 60 * 60 * 1000, timeout: 10000, enableHighAccuracy: false },
+      (e) =>
+        reject(
+          e.code === e.PERMISSION_DENIED
+            ? new LocationError('Location access is blocked.', true)
+            : e.code === e.TIMEOUT
+              ? new LocationError('Finding your location timed out.')
+              : new LocationError('Couldn’t find your location.'),
+        ),
+      { maximumAge: 60 * 60 * 1000, timeout: 15000, enableHighAccuracy: false },
     );
   });
 }
@@ -107,7 +173,7 @@ async function fetchWeather(lat: number, lon: number): Promise<Weather> {
   };
 }
 
-type State = { status: 'loading' | 'ok' | 'error'; weather: Weather | null; error?: string };
+type State = { status: 'loading' | 'ok' | 'error'; weather: Weather | null; error?: string; needsLocation?: boolean; denied?: boolean };
 
 export function useWeather() {
   const [state, setState] = useState<State>(() => {
@@ -119,22 +185,33 @@ export function useWeather() {
     const cached = readJson<Weather>(CACHE_KEY);
     const sameDay = cached && new Date(cached.fetchedAt).toDateString() === new Date().toDateString();
     if (!force && cached && sameDay && Date.now() - cached.fetchedAt < FRESH_MS) return;
+    let locationProblem = false;
     try {
-      let coords = readJson<{ lat: number; lon: number }>(COORDS_KEY);
-      try {
-        coords = await getPosition();
-        writeJson(COORDS_KEY, coords);
-      } catch (e) {
-        if (!coords) throw new Error('Location is off — allow it to see the forecast.');
+      let loc = getSavedLocation();
+      // A picked city wins; otherwise ask the device, falling back to the last known spot.
+      if (loc?.source !== 'manual') {
+        try {
+          const pos = await getPosition();
+          loc = { ...pos, source: 'device' };
+          writeJson(COORDS_KEY, loc);
+        } catch (e) {
+          if (!loc) {
+            locationProblem = true;
+            throw e;
+          }
+        }
       }
-      const w = await fetchWeather(coords!.lat, coords!.lon);
+      const w = await fetchWeather(loc!.lat, loc!.lon);
+      w.place = loc!.name;
       writeJson(CACHE_KEY, w);
       setState({ status: 'ok', weather: w });
     } catch (e) {
       setState((s) => ({
         status: s.weather && sameDay ? 'ok' : 'error',
         weather: sameDay ? s.weather : null,
-        error: e instanceof Error ? e.message : 'Weather unavailable',
+        error: e instanceof LocationError ? e.message : 'Couldn’t reach the weather service.',
+        needsLocation: locationProblem,
+        denied: e instanceof LocationError && e.denied,
       }));
     }
   }, []);
@@ -142,8 +219,16 @@ export function useWeather() {
   useEffect(() => {
     refresh();
     const onVisible = () => document.visibilityState === 'visible' && refresh();
+    const onLocation = () => {
+      setState((s) => ({ ...s, status: s.weather ? s.status : 'loading' }));
+      refresh(true);
+    };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    addEventListener(LOCATION_EVENT, onLocation);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      removeEventListener(LOCATION_EVENT, onLocation);
+    };
   }, [refresh]);
 
   return { ...state, refresh };
