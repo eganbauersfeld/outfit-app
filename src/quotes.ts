@@ -1,6 +1,7 @@
-import { dayOfYear } from './dates';
+import { useEffect, useState } from 'react';
 
-// 50-quote pool; one per day via dayOfYear % 50, no server needed.
+// 50-quote pool. A new one each time the app is opened (or brought back to the front),
+// never the same one twice in a row; it stays put while he moves between tabs.
 export const QUOTES: { text: string; author: string }[] = [
   { text: 'Fashion fades, only style remains the same.', author: 'Coco Chanel' },
   { text: 'Elegance is the only beauty that never fades.', author: 'Audrey Hepburn' },
@@ -54,6 +55,43 @@ export const QUOTES: { text: string; author: string }[] = [
   { text: 'Fashion is temporary, personal style is forever.', author: 'Unknown' },
 ];
 
-export function quoteOfTheDay(d = new Date()) {
-  return QUOTES[dayOfYear(d) % QUOTES.length];
+const LAST = 'outfit.lastQuote';
+
+function pick(): number {
+  let last = -1;
+  try {
+    last = Number(localStorage.getItem(LAST) ?? -1);
+  } catch {
+    /* private mode */
+  }
+  let i = Math.floor(Math.random() * QUOTES.length);
+  if (i === last) i = (i + 1 + Math.floor(Math.random() * (QUOTES.length - 1))) % QUOTES.length;
+  try {
+    localStorage.setItem(LAST, String(i));
+  } catch {
+    /* ignore */
+  }
+  return i;
+}
+
+let current = pick();
+const listeners = new Set<() => void>();
+
+// A home-screen app often resumes instead of reloading, so coming back to the front counts as opening it.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  current = pick();
+  listeners.forEach((f) => f());
+});
+
+export function useQuote() {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const f = () => rerender((n) => n + 1);
+    listeners.add(f);
+    return () => {
+      listeners.delete(f);
+    };
+  }, []);
+  return QUOTES[current];
 }

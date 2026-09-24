@@ -6,7 +6,7 @@ import { ItemForm } from '../components/ItemForm';
 import { LogPicker } from '../components/LogPicker';
 import { todayKey } from '../dates';
 import { starter as makeStarter } from '../engine/stylist';
-import { quoteOfTheDay } from '../quotes';
+import { useQuote } from '../quotes';
 import { dayStreak, uniquenessScore } from '../stats';
 import { useStore } from '../store';
 import { CATEGORIES, type Category, type ClothingItem } from '../types';
@@ -39,7 +39,7 @@ export function Today() {
   const todays = logs.filter((l) => l.date === today).flatMap((l) => l.itemIds.map((id) => itemsById.get(id)).filter((i) => !!i));
   const streak = useMemo(() => dayStreak(logs, today), [logs, today]);
   const unique = useMemo(() => uniquenessScore(logs, itemsById, today), [logs, itemsById, today]);
-  const quote = quoteOfTheDay();
+  const quote = useQuote();
   const starter = useMemo(() => makeStarter(weather, items, logs, feedback), [weather, items, logs, feedback]);
   const now = new Date();
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });

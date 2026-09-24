@@ -29,10 +29,6 @@ export function shortLabel(key: string): string {
   return fromKey(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function dayOfYear(d = new Date()): number {
-  return Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 0).getTime()) / 86400000);
-}
-
 /** Monday of the week containing `key`. */
 export function weekStart(key: string): string {
   const d = fromKey(key);
