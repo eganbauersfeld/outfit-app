@@ -32,6 +32,16 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         runtimeCaching: [
           {
+            // The photo-cutout model and runtime (~56 MB), fetched on first use and then kept for offline.
+            urlPattern: /^https:\/\/staticimgly\.com\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'cutout-model',
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/,
             handler: 'CacheFirst',
             options: {

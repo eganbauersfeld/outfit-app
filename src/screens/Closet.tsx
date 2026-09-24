@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { textOn } from '../color';
-import { SettingsButton, usePhotoUrl } from '../components/Common';
+import { PieceImage, SettingsButton, useLook } from '../components/Common';
 import { PlusIcon } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
 import { daysSinceWorn, lastWorn } from '../stats';
@@ -108,16 +107,10 @@ export function Closet() {
 
 /** Photo if there is one; otherwise the piece's own color, with its name set on it like a record sleeve. */
 function Tile({ item, small, onClick }: { item: ClothingItem; small: boolean; onClick: () => void }) {
-  const url = usePhotoUrl(item.photoId);
-  const fg = url ? '#FFFFFF' : textOn(item.color.hex);
+  const { bg, fg } = useLook(item);
   return (
-    <button type="button" onClick={onClick} aria-label={item.name} style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', background: url ? '#111' : item.color.hex, color: fg, display: 'block', minWidth: 0 }}>
-      {url && (
-        <>
-          <img src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-          <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.3), rgba(0,0,0,0) 26%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.5))' }} />
-        </>
-      )}
+    <button type="button" onClick={onClick} aria-label={item.name} style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', background: bg, color: fg, display: 'block', minWidth: 0 }}>
+      <PieceImage item={item} label shade="both" />
       <span style={{ position: 'absolute', top: 7, left: 8, right: 8, display: 'flex', justifyContent: 'space-between' }}>
         <span className="tag" style={{ opacity: 0.8 }}>
           {small ? item.color.name.slice(0, 3) : item.color.name}

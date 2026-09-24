@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { exportBackup, importBackup } from '../db';
+import { makeCutout } from '../cutout';
+import { exportBackup, getPhoto, importBackup } from '../db';
 import { todayKey } from '../dates';
 import { useSettings, useStore, type Accent, type ThemePref } from '../store';
 import { getSavedLocation } from '../weather';
@@ -14,7 +15,32 @@ const ACCENTS: { value: Accent; label: string; swatch: string }[] = [
 export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void; onPickLocation: () => void }) {
   const location = getSavedLocation();
   const { accent, setAccent, columns, setColumns, themePref, setThemePref } = useSettings();
-  const { reload, items, logs } = useStore();
+  const { reload, items, logs, saveItem } = useStore();
+  const [batch, setBatch] = useState<{ done: number; total: number; failed: number; label: string } | null>(null);
+  const plain = items.filter((i) => i.photoId && !i.photoCutout);
+
+  // Turn every ordinary photo into a studio cutout, one at a time (keeps phone memory in check).
+  async function cleanAll() {
+    const todo = plain.slice();
+    let failed = 0;
+    for (let n = 0; n < todo.length; n++) {
+      const item = todo[n];
+      setBatch({ done: n, total: todo.length, failed, label: item.name });
+      const original = await getPhoto(item.photoId!);
+      if (!original) continue;
+      try {
+        const cut = await makeCutout(original, (label, fraction) =>
+          setBatch({ done: n, total: todo.length, failed, label: fraction !== null && label.startsWith('Downloading') ? `${label} ${Math.round(fraction * 100)}%` : item.name }),
+        );
+        if (cut) await saveItem({ ...item, photoCutout: true }, cut, original);
+        else failed++;
+      } catch {
+        failed++;
+        if (n === 0) break; // model didn't load (offline?) — no point trying the rest
+      }
+    }
+    setBatch({ done: todo.length, total: todo.length, failed, label: '' });
+  }
   const [msg, setMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -89,6 +115,30 @@ export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void
         <button type="button" className="chip" onClick={onPickLocation} style={{ alignSelf: 'flex-start', minHeight: 36, display: 'flex', alignItems: 'center', color: 'var(--ink)' }}>
           {location?.source === 'manual' ? location.name : 'Current location'} · Change
         </button>
+      </div>
+
+      <div className="field">
+        <span className="sublabel">Studio photos</span>
+        <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
+          New photos are cut out and placed on the same backdrop automatically. The first time downloads a ~56 MB model; after that it works offline. Originals are kept.
+        </p>
+        {batch && batch.done < batch.total ? (
+          <p style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>
+            Cleaning up {batch.done + 1} of {batch.total}… <span className="muted">{batch.label}</span>
+          </p>
+        ) : (
+          <>
+            {batch && (
+              <p style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>
+                Done — {batch.total - batch.failed} cleaned{batch.failed ? `, ${batch.failed} kept as they were` : ''}.
+              </p>
+            )}
+            <button type="button" className="primary-btn" disabled={!plain.length} onClick={cleanAll}>
+              <span>{plain.length ? `Clean up ${plain.length} ${plain.length === 1 ? 'photo' : 'photos'}` : 'All photos are studio photos'}</span>
+              <span>→</span>
+            </button>
+          </>
+        )}
       </div>
 
       <div className="field">

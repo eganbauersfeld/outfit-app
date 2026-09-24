@@ -34,7 +34,7 @@ export function LogPicker({ category, label, date, onClose, onAddNew }: { catego
           return (
             <button key={item.id} type="button" aria-pressed={on} onClick={() => toggleLogged(date, item.id)} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div className="photo-well" style={on ? { boxShadow: 'inset 0 0 0 3px var(--ink)' } : undefined}>
-                <ItemPhoto photoId={item.photoId} />
+                <ItemPhoto photoId={item.photoId} cutout={item.photoCutout} />
                 {on && (
                   <span
                     style={{ position: 'absolute', top: 0, right: 0, width: 24, height: 24, background: 'var(--ink)', color: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}

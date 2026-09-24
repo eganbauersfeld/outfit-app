@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { ClothingItem, Feedback, WearLogEntry } from './types';
+import { originalPhotoKey, type ClothingItem, type Feedback, type WearLogEntry } from './types';
 
 interface OutfitDB extends DBSchema {
   items: { key: string; value: ClothingItem };
@@ -38,7 +38,10 @@ export async function deleteItem(item: ClothingItem) {
   const d = await db();
   const tx = d.transaction(['items', 'photos'], 'readwrite');
   await tx.objectStore('items').delete(item.id);
-  if (item.photoId) await tx.objectStore('photos').delete(item.photoId);
+  if (item.photoId) {
+    await tx.objectStore('photos').delete(item.photoId);
+    await tx.objectStore('photos').delete(originalPhotoKey(item.photoId));
+  }
   await tx.done;
 }
 

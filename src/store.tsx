@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import * as db from './db';
 import { dayProfile } from './engine/day';
 import { todayKey } from './dates';
-import type { ClothingItem, Feedback, WearLogEntry } from './types';
+import { originalPhotoKey, type ClothingItem, type Feedback, type WearLogEntry } from './types';
 import { readCachedWeather } from './weather';
 
 // ---------- Closet + wear log ----------
@@ -13,7 +13,8 @@ interface Store {
   logs: WearLogEntry[];
   feedback: Feedback[];
   itemsById: Map<string, ClothingItem>;
-  saveItem: (item: ClothingItem, photo?: Blob | null) => Promise<void>;
+  /** photo: new display photo (null removes it). original: the untouched photo, kept when `photo` is a studio cutout. */
+  saveItem: (item: ClothingItem, photo?: Blob | null, original?: Blob) => Promise<void>;
   removeItem: (item: ClothingItem) => Promise<void>;
   toggleLogged: (date: string, itemId: string) => Promise<void>;
   logOutfit: (date: string, itemIds: string[]) => Promise<void>;
@@ -43,16 +44,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     navigator.storage?.persist?.().catch(() => {});
   }, [reload]);
 
-  const saveItem = useCallback(async (item: ClothingItem, photo?: Blob | null) => {
+  const saveItem = useCallback(async (item: ClothingItem, photo?: Blob | null, original?: Blob) => {
     let next = item;
+    const dropOld = async () => {
+      const old = items.find((p) => p.id === item.id)?.photoId;
+      if (old) {
+        await db.deletePhoto(old);
+        await db.deletePhoto(originalPhotoKey(old));
+      }
+    };
     if (photo) {
       const photoId = `photo-${item.id}-${Date.now()}`;
       await db.putPhoto(photoId, photo);
-      if (item.photoId) await db.deletePhoto(item.photoId);
+      if (original) await db.putPhoto(originalPhotoKey(photoId), original);
+      await dropOld();
       next = { ...item, photoId };
-    } else if (photo === null && item.photoId) {
-      await db.deletePhoto(item.photoId);
-      next = { ...item, photoId: undefined };
+    } else if (photo === null) {
+      await dropOld();
+      next = { ...item, photoId: undefined, photoCutout: undefined };
     }
     await db.putItem(next);
     setItems((prev) => {
@@ -62,7 +71,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       copy[i] = next;
       return copy;
     });
-  }, []);
+  }, [items]);
 
   // Deleting an item keeps past wear logs intact; stats simply skip ids that no longer resolve.
   const removeItem = useCallback(async (item: ClothingItem) => {

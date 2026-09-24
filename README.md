@@ -14,6 +14,9 @@ Personal outfit log / closet / style-trends PWA ("Editorial Mono" design). Singl
   - `npm test` runs the scenario tests in `stylist.test.ts`.
 - **Data:** `src/types.ts` (ClothingItem, WearLogEntry), `src/db.ts`, derived stats in `src/stats.ts`, outfit ideas in `src/ideas.ts`.
 
+- **Studio photos:** `src/cutout.ts` cuts each garment out of its photo on the phone (`@imgly/background-removal`, quantized ISNet, run in `cutout.worker.ts`; ~56 MB model fetched once from the imgly CDN and cached by the service worker), cleans the edges, keeps the main piece, and centers it at a fixed scale on a transparent square. The app draws cutouts on one studio backdrop (`STUDIO` in `components/Common.tsx`). Originals are kept under `orig-<photoId>`. iPhone "lift subject" cutouts skip the model.
+- **License note:** `@imgly/background-removal` is AGPL-3.0. This repo is public, so the source is available as that license expects.
+
 ## Develop
 
 ```bash

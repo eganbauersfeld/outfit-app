@@ -22,6 +22,9 @@ export interface ClothingItem {
   styleType: StyleType;
   /** Key into the `photos` store (the spec's photoUrl — blobs live in IndexedDB). */
   photoId?: string;
+  /** The photo is a studio cutout (transparent PNG drawn on the studio backdrop); the untouched
+   *  original is kept under originalPhotoKey(photoId). */
+  photoCutout?: boolean;
   dateAdded: string;
   isFavorite: boolean;
   isSafeBet: boolean;
@@ -33,6 +36,8 @@ export interface ClothingItem {
   length?: BottomLength;
   material?: Material;
 }
+
+export const originalPhotoKey = (photoId: string) => `orig-${photoId}`;
 
 export type Sleeve = 'short' | 'long' | 'sleeveless';
 export type BottomLength = 'shorts' | 'long';

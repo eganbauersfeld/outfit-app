@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { textOn } from '../color';
 import { getPhoto } from '../db';
+import type { ClothingItem } from '../types';
 import { GearIcon, PhotoPlaceholder } from './Icons';
 
 // Settings and the location picker live at app level; any screen can open them.
@@ -37,9 +39,61 @@ export function usePhotoUrl(photoId?: string) {
   return url;
 }
 
-export function ItemPhoto({ photoId, iconSize = 24 }: { photoId?: string; iconSize?: number }) {
+/** The one studio backdrop every cutout sits on, in both themes (dark clothes vanish on dark). */
+export const STUDIO = '#E4E2DC';
+
+/** How a piece should be drawn: studio cutout, ordinary photo, or its color when there's no photo. */
+export function useLook(item: ClothingItem) {
+  const url = usePhotoUrl(item.photoId);
+  if (url && item.photoCutout) return { url, studio: true, bg: STUDIO, fg: '#111111' };
+  if (url) return { url, studio: false, bg: '#111111', fg: '#FFFFFF' };
+  return { url: undefined, studio: false, bg: item.color.hex, fg: textOn(item.color.hex) };
+}
+
+/**
+ * Fills its (position: relative) parent with the piece's photo. Cutouts sit on the studio backdrop
+ * with a soft shadow; `label` leaves room at the bottom for a name. Ordinary photos cover the tile,
+ * with an optional shade so white text stays readable.
+ */
+export function PieceImage({ item, label = false, shade = 'none' }: { item: ClothingItem; label?: boolean; shade?: 'none' | 'bottom' | 'both' }) {
+  const { url, studio } = useLook(item);
+  if (!url) return null;
+  if (studio)
+    return (
+      <span style={{ position: 'absolute', inset: 0, background: STUDIO }}>
+        <img
+          src={url}
+          alt=""
+          style={{ position: 'absolute', left: '8%', top: label ? '15%' : '6%', width: label ? '84%' : '88%', height: label ? '58%' : '88%', objectFit: 'contain', filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.18))' }}
+        />
+      </span>
+    );
+  return (
+    <>
+      <img src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+      {shade !== 'none' && (
+        <span
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: shade === 'both' ? 'linear-gradient(180deg, rgba(0,0,0,0.3), rgba(0,0,0,0) 26%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.5))' : 'linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55))',
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+export function ItemPhoto({ photoId, cutout, iconSize = 24 }: { photoId?: string; cutout?: boolean; iconSize?: number }) {
   const url = usePhotoUrl(photoId);
-  return url ? <img src={url} alt="" /> : <PhotoPlaceholder size={iconSize} />;
+  if (!url) return <PhotoPlaceholder size={iconSize} />;
+  if (cutout)
+    return (
+      <span style={{ position: 'absolute', inset: 0, background: STUDIO }}>
+        <img src={url} alt="" style={{ position: 'absolute', inset: '6%', width: '88%', height: '88%', objectFit: 'contain', filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.18))' }} />
+      </span>
+    );
+  return <img src={url} alt="" />;
 }
 
 export function Sheet({ title, onClose, children, action }: { title: string; onClose: () => void; children: ReactNode; action?: ReactNode }) {

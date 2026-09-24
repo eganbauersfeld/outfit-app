@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { SettingsButton, usePhotoUrl } from '../components/Common';
+import { PieceImage, SettingsButton } from '../components/Common';
 import { fromKey, shortLabel, todayKey } from '../dates';
 import { galleryWeeks, wornByDate } from '../stats';
 import { useStore } from '../store';
@@ -123,7 +123,7 @@ function Artwork({ items }: { items: ClothingItem[] }) {
     return (
       <span style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gridAutoRows: '1fr', gap: 1, background: '#111' }}>
         {withPhotos.map((i, n) => (
-          <PhotoCell key={i.id} photoId={i.photoId!} span={withPhotos.length === 3 && n === 0} />
+          <PhotoCell key={i.id} item={i} span={withPhotos.length === 3 && n === 0} bottom={touchesBottom(withPhotos.length, n)} />
         ))}
       </span>
     );
@@ -137,11 +137,17 @@ function Artwork({ items }: { items: ClothingItem[] }) {
   );
 }
 
-function PhotoCell({ photoId, span }: { photoId: string; span: boolean }) {
-  const url = usePhotoUrl(photoId);
+/** Cells along the bottom sit under the date strip, so cutouts there leave it room. */
+function touchesBottom(count: number, n: number) {
+  if (count <= 2) return true;
+  if (count === 3) return n === 0 || n === 2;
+  return n >= 2;
+}
+
+function PhotoCell({ item, span, bottom }: { item: ClothingItem; span: boolean; bottom: boolean }) {
   return (
-    <span style={{ gridRow: span ? 'span 2' : undefined, background: '#1b1b1b', overflow: 'hidden' }}>
-      {url && <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+    <span style={{ gridRow: span ? 'span 2' : undefined, background: '#1b1b1b', overflow: 'hidden', position: 'relative' }}>
+      <PieceImage item={item} label={bottom} />
     </span>
   );
 }

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { textOn } from '../color';
-import { SettingsButton, usePhotoUrl } from '../components/Common';
+import { PieceImage, SettingsButton, useLook } from '../components/Common';
 import { WeatherGlyph } from '../components/Icons';
 import { todayKey } from '../dates';
 import { rankSwaps, starter as makeStarter, suggest, type Suggestion } from '../engine/stylist';
@@ -290,21 +289,15 @@ function OutfitCard({
 }
 
 function PieceTile({ item, big, onSwap }: { item: ClothingItem; big?: boolean; onSwap: () => void }) {
-  const url = usePhotoUrl(item.photoId);
-  const fg = url ? '#FFFFFF' : textOn(item.color.hex);
+  const { bg, fg } = useLook(item);
   return (
     <button
       type="button"
       onClick={onSwap}
       aria-label={`${item.name} — tap to swap`}
-      style={{ position: 'relative', aspectRatio: big ? '1' : undefined, height: big ? undefined : '100%', overflow: 'hidden', background: url ? '#111' : item.color.hex, color: fg, display: 'block', minWidth: 0 }}
+      style={{ position: 'relative', aspectRatio: big ? '1' : undefined, height: big ? undefined : '100%', overflow: 'hidden', background: bg, color: fg, display: 'block', minWidth: 0 }}
     >
-      {url && (
-        <>
-          <img src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-          <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55))' }} />
-        </>
-      )}
+      <PieceImage item={item} label shade="bottom" />
       <span className="tag" style={{ position: 'absolute', top: 7, left: 8, opacity: 0.8 }}>
         {item.category === 'Sunglasses' ? 'Shades' : item.category}
       </span>

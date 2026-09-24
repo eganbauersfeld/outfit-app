@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { textOn } from '../color';
-import { idx, openLocation, SettingsButton, usePhotoUrl } from '../components/Common';
+import { idx, openLocation, SettingsButton, STUDIO, usePhotoUrl } from '../components/Common';
 import { WeatherGlyph } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
 import { LogPicker } from '../components/LogPicker';
@@ -191,8 +191,9 @@ export function Today() {
 function LogTile({ index, label, worn, onClick }: { index: number; label: string; worn: ClothingItem[]; onClick: () => void }) {
   const first = worn[0];
   const photo = usePhotoUrl(first?.photoId);
-  const fill = first && !photo ? first.color.hex : undefined;
-  const fg = photo ? '#FFFFFF' : fill ? textOn(fill) : undefined;
+  const studio = !!photo && !!first?.photoCutout;
+  const fill = first && !photo ? first.color.hex : studio ? STUDIO : undefined;
+  const fg = studio ? '#111111' : photo ? '#FFFFFF' : fill ? textOn(fill) : undefined;
   return (
     <button
       type="button"
@@ -210,7 +211,10 @@ function LogTile({ index, label, worn, onClick }: { index: number; label: string
         color: fg,
       }}
     >
-      {photo && (
+      {photo && studio && (
+        <img src={photo} alt="" style={{ position: 'absolute', right: 4, top: 3, bottom: 3, width: '42%', height: 'calc(100% - 6px)', objectFit: 'contain', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.2))' }} />
+      )}
+      {photo && !studio && (
         <>
           <img src={photo} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
           <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,0.55), rgba(0,0,0,0) 70%)' }} />
