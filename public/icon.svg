@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#E7E6E2"/>
-  <rect y="352" width="512" height="160" fill="#F0B429"/>
-  <rect y="350" width="512" height="4" fill="#111111"/>
-  <ellipse cx="256" cy="186" rx="112" ry="132" fill="#111111"/>
-  <ellipse cx="256" cy="186" rx="62" ry="120" fill="#E7E6E2"/>
+  <rect width="512" height="512" fill="#111111"/>
+  <!-- Single-line hanger, centered and scaled up a touch; all within the maskable safe zone. -->
+  <g transform="scale(5.12) translate(50 50) scale(1.18) translate(-50 -46.75)">
+    <path d="M50 36c0-5 4-8.5 8.5-8.5S66 31 66 35.5c0 5-4.5 7-8 9.2L50 49.5 22 66h56L50 49.5" fill="none" stroke="#E7E6E2" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
 </svg>
