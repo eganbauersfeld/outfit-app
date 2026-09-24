@@ -6,7 +6,7 @@ import { ItemForm } from '../components/ItemForm';
 import { LogPicker } from '../components/LogPicker';
 import { todayKey } from '../dates';
 import { starter as makeStarter } from '../engine/stylist';
-import { useQuote } from '../quotes';
+import { KNOWN_FOR, useQuote } from '../quotes';
 import { dayStreak, uniquenessScore } from '../stats';
 import { useStore } from '../store';
 import { CATEGORIES, type Category, type ClothingItem } from '../types';
@@ -158,6 +158,7 @@ export function Today() {
           </blockquote>
           <figcaption className="label muted" style={{ marginTop: 6 }}>
             {quote.author}
+            {KNOWN_FOR[quote.author] && <span style={{ textTransform: 'none', letterSpacing: '0.02em', fontWeight: 500 }}> ({KNOWN_FOR[quote.author]})</span>}
           </figcaption>
         </figure>
       </div>

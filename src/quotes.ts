@@ -55,6 +55,34 @@ export const QUOTES: { text: string; author: string }[] = [
   { text: 'Fashion is temporary, personal style is forever.', author: 'Unknown' },
 ];
 
+/** What each author is best known for, shown in parentheses after the name. */
+export const KNOWN_FOR: Record<string, string> = {
+  'Coco Chanel': 'founded Chanel',
+  'Audrey Hepburn': 'Breakfast at Tiffany’s',
+  'Rachel Zoe': 'celebrity stylist',
+  'Edna Woolman Chase': 'Vogue editor-in-chief',
+  'Orson Welles': 'Citizen Kane',
+  'Marilyn Monroe': 'Some Like It Hot',
+  'Vivienne Westwood': 'punk fashion designer',
+  'Giorgio Armani': 'founded Armani',
+  'Yves Saint Laurent': 'founded YSL',
+  'Diane von Furstenberg': 'the wrap dress',
+  'Ralph Lauren': 'founded Polo Ralph Lauren',
+  'Anna Wintour': 'Vogue editor-in-chief',
+  'John Galliano': 'Dior creative director',
+  'Oscar de la Renta': 'evening-wear designer',
+  'Karl Lagerfeld': 'Chanel creative director',
+  'Miuccia Prada': 'runs Prada',
+  'Anne Klein': 'American sportswear designer',
+  'Michael Kors': 'Project Runway judge',
+  'Sophia Loren': 'Two Women',
+  'Edith Head': 'Hollywood costume designer',
+  'Anna Sui': 'New York fashion designer',
+  'Alexander McQueen': 'founded Alexander McQueen',
+  'Marc Jacobs': 'Louis Vuitton creative director',
+  'Bo Derek': '10',
+};
+
 const LAST = 'outfit.lastQuote';
 
 function pick(): number {
