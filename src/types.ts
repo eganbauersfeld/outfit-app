@@ -25,6 +25,10 @@ export interface ClothingItem {
   /** The photo is a studio cutout (transparent PNG drawn on the studio backdrop); the untouched
    *  original is kept under originalPhotoKey(photoId). */
   photoCutout?: boolean;
+  /** Waiting in the studio-photo queue (processed while the app is open). */
+  photoPending?: boolean;
+  /** The studio cleanup couldn't find a clear garment in this photo; don't retry it automatically. */
+  studioFailed?: boolean;
   dateAdded: string;
   isFavorite: boolean;
   isSafeBet: boolean;

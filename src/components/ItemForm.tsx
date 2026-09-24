@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { hasTransparentBackground, makeCutout } from '../cutout';
+import { hasTransparentBackground } from '../cutout';
 import { getPhoto } from '../db';
-import { useStore } from '../store';
+import { useSettings, useStore } from '../store';
 import { CATEGORIES, COLOR_PRESETS, lengthOf, MATERIALS, originalPhotoKey, sleeveOf, type BottomLength, type Category, type ClothingItem, type Sleeve, type WearContext } from '../types';
 import { ItemPhoto, Sheet, STUDIO, Switch } from './Common';
 
@@ -42,60 +42,38 @@ function blank(category: Category): ClothingItem {
 }
 
 export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: ClothingItem; defaultCategory?: Category; onClose: () => void }) {
-  const { saveItem, removeItem } = useStore();
+  const { items, saveItem, removeItem, studio } = useStore();
+  const { autoStudio } = useSettings();
   const [draft, setDraft] = useState<ClothingItem>(() => item ?? blank(defaultCategory));
-  // Photo edits: `src` is the untouched photo being worked on (undefined = unchanged, null = removed);
-  // `cut` is its studio cutout; `studio` picks which one gets saved.
+  // `src` is a photo to save (undefined = unchanged, null = removed). `srcIsNew` marks a freshly
+  // picked photo (queued for a studio cleanup) as opposed to a restored original (kept as is).
   const [src, setSrc] = useState<Blob | null | undefined>(undefined);
-  const [cut, setCut] = useState<Blob | null>(null);
-  const [studio, setStudio] = useState(false);
-  const [status, setStatus] = useState<{ label: string; fraction: number | null } | null>(null);
+  const [srcIsNew, setSrcIsNew] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const isPreset = COLOR_PRESETS.some((c) => c.name === draft.color.name && c.hex === draft.color.hex);
+  // The queue may finish this piece while the editor is open; show (and keep) its latest photo.
+  const live = items.find((i) => i.id === draft.id);
+  const photoId = live?.photoId ?? draft.photoId;
+  const cutout = live ? live.photoCutout : draft.photoCutout;
+  const pending = (live?.photoPending || draft.photoPending) && !cutout;
+  const beingWorkedOn = pending && studio.working === (live ?? draft).name;
 
-  const shown = studio && cut ? cut : src;
   useEffect(() => {
-    if (!shown) return setPreview(null);
-    const u = URL.createObjectURL(shown);
+    if (!src) return setPreview(null);
+    const u = URL.createObjectURL(src);
     setPreview(u);
     return () => URL.revokeObjectURL(u);
-  }, [shown]);
-
-  async function runCutout(blob: Blob) {
-    setCut(null);
-    setError(null);
-    setStatus({ label: 'Cleaning up the photo…', fraction: null });
-    try {
-      const result = await makeCutout(blob, (label, fraction) => setStatus({ label, fraction }));
-      setCut(result);
-      setStudio(!!result);
-      if (!result) setError('Couldn’t pick out the piece in this photo — keeping the original. A plainer background helps.');
-    } catch {
-      setStudio(false);
-      setError('Photo cleanup isn’t available right now (it needs a connection the first time). Keeping the original.');
-    } finally {
-      setStatus(null);
-    }
-  }
-
-  async function cleanExisting() {
-    if (!draft.photoId) return;
-    const blob = await getPhoto(draft.photoId);
-    if (!blob) return;
-    setSrc(blob);
-    await runCutout(blob);
-  }
+  }, [src]);
 
   async function restoreOriginal() {
-    if (!draft.photoId) return;
-    const blob = await getPhoto(originalPhotoKey(draft.photoId));
+    if (!photoId) return;
+    const blob = await getPhoto(originalPhotoKey(photoId));
     if (!blob) return setError('The original isn’t stored for this photo.');
     setSrc(blob);
-    setCut(null);
-    setStudio(false);
+    setSrcIsNew(false);
   }
 
   const set = <K extends keyof ClothingItem>(key: K, value: ClothingItem[K]) => setDraft((d) => ({ ...d, [key]: value }));
@@ -104,15 +82,13 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    let blob: Blob;
     try {
-      blob = await resizeImage(file);
+      setSrc(await resizeImage(file));
+      setSrcIsNew(true);
+      setError(null);
     } catch {
-      return setError('Couldn’t read that photo.');
+      setError('Couldn’t read that photo.');
     }
-    setSrc(blob);
-    setStudio(false);
-    await runCutout(blob);
   }
 
   async function save() {
@@ -126,10 +102,11 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
         sleeve: draft.category === 'Top' ? sleeveOf(draft) : undefined,
         length: draft.category === 'Bottom' ? lengthOf(draft) : undefined,
       };
-      if (src === null) await saveItem({ ...next, photoCutout: undefined }, null);
-      else if (src && studio && cut) await saveItem({ ...next, photoCutout: true }, cut, src);
-      else if (src) await saveItem({ ...next, photoCutout: false }, src);
-      else await saveItem(next);
+      if (src === null) await saveItem({ ...next, photoCutout: undefined, photoPending: undefined, studioFailed: undefined }, null);
+      // A new photo saves right away; the studio version swaps in when the queue gets to it.
+      else if (src) await saveItem({ ...next, photoCutout: false, photoPending: srcIsNew && autoStudio, studioFailed: false }, src);
+      // Photo untouched: keep whatever the queue has done to it in the meantime.
+      else await saveItem({ ...next, photoId, photoCutout: cutout, photoPending: pending, studioFailed: live?.studioFailed && !draft.photoPending });
       onClose();
     } catch {
       setError('Couldn’t save — try again.');
@@ -146,6 +123,19 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
   const toggleContext = (c: WearContext) =>
     set('contexts', draft.contexts.includes(c) ? draft.contexts.filter((x) => x !== c) : [...draft.contexts, c]);
 
+  const photoNote =
+    src && srcIsNew
+      ? autoStudio
+        ? 'Saves right away — the studio version swaps in a few seconds later.'
+        : 'Auto studio cleanup is off (Settings). Use Clean up closet when you like.'
+      : src === undefined && beingWorkedOn
+        ? 'Cleaning up this photo now…'
+        : src === undefined && pending
+          ? 'Queued for a studio cleanup.'
+          : src === undefined && live?.studioFailed
+            ? 'Couldn’t pick out the piece in this photo — a plainer background helps.'
+            : null;
+
   return (
     <Sheet
       title={item ? 'Edit piece' : 'New piece'}
@@ -156,71 +146,46 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
         </button>
       }
     >
-      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: status || error ? 8 : 18 }}>
-        <button type="button" className="photo-well" style={{ width: 132, background: (studio && cut) || (src === undefined && draft.photoCutout) ? STUDIO : undefined }} aria-label="Add photo" onClick={() => fileRef.current?.click()}>
-          {preview ? (
-            studio && cut ? (
-              <img src={preview} alt="" style={{ position: 'absolute', inset: '6%', width: '88%', height: '88%', objectFit: 'contain', filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.18))' }} />
-            ) : (
-              <img src={preview} alt="" />
-            )
-          ) : src === null ? (
-            <ItemPhoto />
-          ) : (
-            <ItemPhoto photoId={draft.photoId} cutout={draft.photoCutout} />
-          )}
-          {status && (
-            <span style={{ position: 'absolute', inset: 0, background: 'rgba(17,17,17,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: photoNote || error ? 8 : 18 }}>
+        <button type="button" className="photo-well" style={{ width: 132, background: src === undefined && cutout ? STUDIO : undefined }} aria-label="Add photo" onClick={() => fileRef.current?.click()}>
+          {preview ? <img src={preview} alt="" /> : src === null ? <ItemPhoto /> : <ItemPhoto photoId={photoId} cutout={cutout} />}
+          {src === undefined && beingWorkedOn && (
+            <span style={{ position: 'absolute', inset: 0, background: 'rgba(17,17,17,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span className="spinner" aria-hidden />
             </span>
           )}
         </button>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          {cut && src && (
-            <div className="seg" style={{ marginBottom: 6 }}>
-              <button type="button" className="chip" aria-pressed={studio} onClick={() => setStudio(true)}>
-                Studio
-              </button>
-              <button type="button" className="chip" aria-pressed={!studio} onClick={() => setStudio(false)}>
-                Original
-              </button>
-            </div>
-          )}
-          <button type="button" className="text-btn" style={{ textAlign: 'left' }} disabled={!!status} onClick={() => fileRef.current?.click()}>
-            {draft.photoId || preview ? 'Change photo' : 'Add photo'}
+          <button type="button" className="text-btn" style={{ textAlign: 'left' }} onClick={() => fileRef.current?.click()}>
+            {photoId || preview ? 'Change photo' : 'Add photo'}
           </button>
-          {src === undefined && draft.photoId && !draft.photoCutout && (
-            <button type="button" className="text-btn" style={{ textAlign: 'left' }} disabled={!!status} onClick={cleanExisting}>
-              Clean up photo
+          {src === undefined && photoId && !cutout && !pending && (
+            <button
+              type="button"
+              className="text-btn"
+              style={{ textAlign: 'left' }}
+              onClick={() => setDraft((d) => ({ ...d, photoPending: true, studioFailed: false }))}
+            >
+              Make studio photo
             </button>
           )}
-          {src === undefined && draft.photoId && draft.photoCutout && (
+          {src === undefined && photoId && cutout && (
             <button type="button" className="text-btn muted" style={{ textAlign: 'left' }} onClick={restoreOriginal}>
               Restore original
             </button>
           )}
-          {(draft.photoId || preview) && src !== null && (
-            <button
-              type="button"
-              className="text-btn muted"
-              style={{ textAlign: 'left' }}
-              disabled={!!status}
-              onClick={() => {
-                setSrc(null);
-                setCut(null);
-              }}
-            >
+          {(photoId || preview) && src !== null && (
+            <button type="button" className="text-btn muted" style={{ textAlign: 'left' }} onClick={() => setSrc(null)}>
               Remove photo
             </button>
           )}
         </div>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
       </div>
-      {error && src !== undefined && !status && <p style={{ color: '#c62f3c', fontWeight: 600, fontSize: 12, margin: '0 0 16px', lineHeight: 1.4 }}>{error}</p>}
-      {status && (
-        <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: '0 0 16px' }}>
-          {status.label}
-          {status.fraction !== null ? ` ${Math.round(status.fraction * 100)}%` : ''}
+      {error && <p style={{ color: '#c62f3c', fontWeight: 600, fontSize: 12, margin: '0 0 16px', lineHeight: 1.4 }}>{error}</p>}
+      {!error && photoNote && (
+        <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: '0 0 16px', lineHeight: 1.4 }}>
+          {photoNote}
         </p>
       )}
 
@@ -350,9 +315,9 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
         <Switch label="Thrifted" checked={draft.isThrifted} onChange={(v) => set('isThrifted', v)} />
       </div>
 
-      {error && src === undefined && <p style={{ color: '#c62f3c', fontWeight: 600, fontSize: 13, margin: '0 0 12px' }}>{error}</p>}
 
-      <button type="button" className="primary-btn center" disabled={busy || !!status} onClick={save}>
+      {error && <p style={{ color: '#c62f3c', fontWeight: 600, fontSize: 13, margin: '0 0 12px' }}>{error}</p>}
+      <button type="button" className="primary-btn center" disabled={busy} onClick={save}>
         {item ? 'Save changes' : 'Add to closet'}
       </button>
       {item && (item.contexts.length === 0 || item.contexts.includes('everyday')) && (

@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { makeCutout } from './cutout';
 import * as db from './db';
 import { dayProfile } from './engine/day';
 import { todayKey } from './dates';
@@ -20,6 +21,20 @@ interface Store {
   logOutfit: (date: string, itemIds: string[]) => Promise<void>;
   react: (itemIds: string[], verdict: Feedback['verdict']) => Promise<void>;
   reload: () => Promise<void>;
+  studio: StudioStatus;
+  /** Queue every ordinary photo in the closet for a studio cleanup. */
+  cleanUpCloset: () => Promise<void>;
+}
+
+export interface StudioStatus {
+  /** Photos still waiting (including the one being worked on). */
+  pending: number;
+  /** Name of the piece being processed right now. */
+  working: string | null;
+  /** Photos this session where no clear garment was found (kept as they were). */
+  failed: number;
+  /** The model couldn't load (usually offline); the queue retries in a minute. */
+  stalled: boolean;
 }
 
 const StoreCtx = createContext<Store | null>(null);
@@ -115,9 +130,77 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
+  // ---------- Studio-photo queue ----------
+  // Pieces flagged photoPending get their photo cut out one at a time, while the app is open and on
+  // screen (iOS pauses home-screen apps in the background). The flag is stored with the piece, so a
+  // queue interrupted by closing the app picks up again next time.
+  const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
+  const [working, setWorking] = useState<string | null>(null);
+  const [failed, setFailed] = useState(0);
+  const [stalledUntil, setStalledUntil] = useState(0);
+  const [tick, setTick] = useState(0);
+  const running = useRef(false);
+  const latest = useRef({ items, saveItem });
+  latest.current = { items, saveItem };
+
+  useEffect(() => {
+    const onVis = () => setVisible(document.visibilityState === 'visible');
+    const onOnline = () => setStalledUntil(0);
+    document.addEventListener('visibilitychange', onVis);
+    addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      removeEventListener('online', onOnline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !visible || running.current || Date.now() < stalledUntil) return;
+    const next = items.find((i) => i.photoPending && i.photoId);
+    if (!next) return;
+    running.current = true;
+    setWorking(next.name);
+    (async () => {
+      try {
+        const original = await db.getPhoto(next.photoId!);
+        const cut = original ? await makeCutout(original) : null;
+        // Only apply the result if the piece still has the photo we started with.
+        const now = latest.current.items.find((i) => i.id === next.id);
+        if (now && now.photoId === next.photoId) {
+          if (cut && original) await latest.current.saveItem({ ...now, photoPending: false, photoCutout: true, studioFailed: false }, cut, original);
+          else {
+            await latest.current.saveItem({ ...now, photoPending: false, studioFailed: true });
+            setFailed((f) => f + 1);
+          }
+        }
+        setStalledUntil(0);
+      } catch {
+        // The model didn't load (offline, or no space). Leave the piece queued and try again later.
+        setStalledUntil(Date.now() + 60_000);
+        setTimeout(() => setTick((t) => t + 1), 61_000);
+      } finally {
+        running.current = false;
+        setWorking(null);
+      }
+    })();
+  }, [items, ready, visible, stalledUntil, tick]);
+
+  const cleanUpCloset = useCallback(async () => {
+    const todo = latest.current.items.filter((i) => i.photoId && !i.photoCutout && !i.photoPending);
+    for (const i of todo) await db.putItem({ ...i, photoPending: true, studioFailed: false });
+    setItems((prev) => prev.map((i) => (todo.some((t) => t.id === i.id) ? { ...i, photoPending: true, studioFailed: false } : i)));
+    setFailed(0);
+    setStalledUntil(0);
+  }, []);
+
+  const studio: StudioStatus = useMemo(
+    () => ({ pending: items.filter((i) => i.photoPending && i.photoId).length, working, failed, stalled: stalledUntil > Date.now() }),
+    [items, working, failed, stalledUntil],
+  );
+
   const value = useMemo(
-    () => ({ ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload }),
-    [ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload],
+    () => ({ ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload, studio, cleanUpCloset }),
+    [ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload, studio, cleanUpCloset],
   );
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }
@@ -152,6 +235,9 @@ interface Settings {
   setAccent: (a: Accent) => void;
   columns: 3 | 4;
   setColumns: (c: 3 | 4) => void;
+  /** Queue new photos for a studio cleanup automatically. */
+  autoStudio: boolean;
+  setAutoStudio: (on: boolean) => void;
 }
 
 const SettingsCtx = createContext<Settings | null>(null);
@@ -189,6 +275,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return ACCENTS.includes(saved) ? saved : 'yellow';
   });
   const [columns, setColumnsState] = useState<3 | 4>(() => (read('outfit.columns') === '4' ? 4 : 3));
+  const [autoStudio, setAutoStudioState] = useState(() => read('outfit.autoStudio') !== 'off');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -216,8 +303,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         write('outfit.columns', String(c));
         setColumnsState(c);
       },
+      autoStudio,
+      setAutoStudio: (on) => {
+        write('outfit.autoStudio', on ? 'on' : 'off');
+        setAutoStudioState(on);
+      },
     }),
-    [theme, themePref, accent, columns],
+    [theme, themePref, accent, columns, autoStudio],
   );
   return <SettingsCtx.Provider value={value}>{children}</SettingsCtx.Provider>;
 }

@@ -15,7 +15,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 const STALE_DAYS = 30;
 
 export function Closet() {
-  const { ready, items, logs } = useStore();
+  const { ready, items, logs, studio } = useStore();
   const { columns } = useSettings();
   const [cat, setCat] = useState<Category | 'All'>('All');
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
@@ -55,6 +55,12 @@ export function Closet() {
         </div>
       </header>
 
+      {studio.pending > 0 && (
+        <div className="label rule-t" style={{ margin: '0 20px', padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }} role="status">
+          <span className="spinner" style={{ width: 11, height: 11, borderWidth: 1.5, borderColor: 'var(--rule-soft)', borderTopColor: 'var(--ink)' }} aria-hidden />
+          {studio.stalled ? 'Studio photos paused — waiting for a connection' : `Making studio photos · ${studio.pending} left`}
+        </div>
+      )}
       <nav className="hscroll rule-t" style={{ margin: '0 20px', gap: 18 }} aria-label="Categories">
         {(['All', ...CATEGORIES] as const).map((c) => {
           const on = cat === c;
@@ -115,7 +121,12 @@ function Tile({ item, small, onClick }: { item: ClothingItem; small: boolean; on
         <span className="tag" style={{ opacity: 0.8 }}>
           {small ? item.color.name.slice(0, 3) : item.color.name}
         </span>
-        {item.isFavorite && <span style={{ width: 7, height: 7, background: 'var(--accent)', boxShadow: '0 0 0 1px rgba(0,0,0,0.25)' }} aria-label="Favorite" />}
+        <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+          {item.photoPending && !item.photoCutout && (
+            <span className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5, borderColor: 'rgba(127,127,127,0.35)', borderTopColor: 'currentColor' }} aria-label="Making studio photo" />
+          )}
+          {item.isFavorite && <span style={{ width: 7, height: 7, background: 'var(--accent)', boxShadow: '0 0 0 1px rgba(0,0,0,0.25)' }} aria-label="Favorite" />}
+        </span>
       </span>
       <span style={{ position: 'absolute', left: 8, right: 8, bottom: 7, textAlign: 'left' }}>
         <span className="grot" style={{ display: 'block', fontSize: small ? 12 : 15, lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
