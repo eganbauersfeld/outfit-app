@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ThemeToggle } from '../components/Common';
-import { GearIcon, SparkleIcon, WeatherGlyph } from '../components/Icons';
+import { textOn } from '../color';
+import { idx, ThemeToggle, usePhotoUrl } from '../components/Common';
+import { GearIcon, WeatherGlyph } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
 import { LocationSheet } from '../components/LocationSheet';
 import { LogPicker } from '../components/LogPicker';
@@ -10,202 +11,176 @@ import { generateIdeas, type IdeasResult } from '../ideas';
 import { quoteOfTheDay } from '../quotes';
 import { dayStreak, thriftedPct } from '../stats';
 import { useStore } from '../store';
-import { CATEGORIES, type Category } from '../types';
+import { CATEGORIES, type Category, type ClothingItem } from '../types';
 import { useWeather } from '../weather';
 
-const TILE_LABEL: Record<Category, string> = { Top: 'Top', Bottom: 'Bottom', Outerwear: 'Outerwear', Shoes: 'Shoes', Sunglasses: 'Sunglasses', Misc: 'Misc.' };
+const TILE_LABEL: Record<Category, string> = { Top: 'Top', Bottom: 'Bottom', Outerwear: 'Outerwear', Shoes: 'Shoes', Sunglasses: 'Shades', Misc: 'Misc.' };
 
 export function Today() {
   const { items, logs, itemsById } = useStore();
   const { status, weather, error, needsLocation, denied, refresh } = useWeather();
   const [locationOpen, setLocationOpen] = useState(false);
   const [ideas, setIdeas] = useState<IdeasResult | null>(null);
+  const [picker, setPicker] = useState<Category | null>(null);
+  const [newIn, setNewIn] = useState<Category | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const quoteBox = useRef<HTMLDivElement>(null);
   const quoteCard = useRef<HTMLElement>(null);
   const [quoteFits, setQuoteFits] = useState(true);
 
   // The screen never scrolls; the quote only shows when the space left over can hold it.
-  // Re-checked after any render that can change what's above it, and on viewport resizes.
   const checkQuote = useCallback(() => {
     const box = quoteBox.current;
     const card = quoteCard.current;
-    if (box && card) setQuoteFits(box.clientHeight >= card.offsetHeight + 22);
+    if (box && card) setQuoteFits(box.clientHeight >= card.offsetHeight + 16);
   }, []);
   useLayoutEffect(checkQuote);
   useEffect(() => {
     addEventListener('resize', checkQuote);
     return () => removeEventListener('resize', checkQuote);
   }, [checkQuote]);
-  const [picker, setPicker] = useState<Category | null>(null);
-  const [newIn, setNewIn] = useState<Category | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const today = todayKey();
   const todays = logs.filter((l) => l.date === today).flatMap((l) => l.itemIds.map((id) => itemsById.get(id)).filter((i) => !!i));
   const streak = useMemo(() => dayStreak(logs, today), [logs, today]);
   const thrifted = useMemo(() => thriftedPct(logs, itemsById), [logs, itemsById]);
   const quote = quoteOfTheDay();
-  const dateLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  const now = new Date();
+  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+  const monthDay = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   return (
     <div className="today">
-      <header className="groove" style={{ padding: 'calc(14px + env(safe-area-inset-top)) 24px 14px', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingTop: 4 }}>
-            {weather && (
-              <span style={{ filter: 'drop-shadow(0 1px 1px var(--card-shadow))', display: 'flex' }}>
-                <WeatherGlyph icon={weather.icon} size={38} />
-              </span>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div className={weather ? 'serif emboss' : 'serif emboss muted'} style={{ fontSize: 46, lineHeight: 0.9 }}>
-                {weather ? `${weather.temp}°` : status === 'loading' ? '—°' : '?°'}
-              </div>
-              <div style={{ fontWeight: 700, fontSize: 12, letterSpacing: '0.04em', color: 'var(--muted)', marginTop: 5 }}>
-                {weather ? weather.condition : status === 'loading' ? 'Getting the forecast…' : 'No forecast'}
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" className="round-btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
-                <GearIcon />
-              </button>
-              <ThemeToggle />
-            </div>
-            <span className="label" style={{ whiteSpace: 'nowrap' }}>
-              {dateLabel}
-            </span>
+      {/* Masthead: date line, then the temperature set huge */}
+      <header style={{ padding: 'calc(10px + env(safe-area-inset-top)) 20px 0' }}>
+        <div className="rule-b" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 6 }}>
+          <span className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 10, height: 10, background: 'var(--accent)' }} aria-hidden />
+            {weekday} <span className="muted">/ {monthDay}</span>
+          </span>
+          <div style={{ display: 'flex', marginRight: -10 }}>
+            <button type="button" className="icon-btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
+              <GearIcon size={17} />
+            </button>
+            <ThemeToggle />
           </div>
         </div>
-        {weather ? (
-          <div style={{ fontWeight: 600, fontSize: 11, letterSpacing: '0.04em', color: 'var(--muted)' }}>
-            Feels like {weather.feelsLike}° · H:{weather.high}° L:{weather.low}°
-            {weather.place && (
-              <>
-                {' · '}
-                <button type="button" onClick={() => setLocationOpen(true)} style={{ textDecoration: 'underline', textUnderlineOffset: 2 }}>
-                  {weather.place}
-                </button>
-              </>
-            )}
+
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: ideas ? '8px 0 8px' : '10px 0 12px' }}>
+          <div className={weather ? 'display' : 'display muted'} style={{ fontSize: ideas ? 76 : 'clamp(96px, 30vw, 128px)', marginLeft: -4, transition: 'font-size 180ms ease' }}>
+            {weather ? `${weather.temp}°` : status === 'loading' ? '—' : '?'}
           </div>
-        ) : (
-          status === 'error' && (
-            <div style={{ fontWeight: 600, fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
-              {error ?? 'Weather unavailable.'}
-              {denied && ' On iPhone: Settings → Privacy & Security → Location Services → Safari Websites → While Using.'}
-              <div style={{ display: 'flex', gap: 16 }}>
-                <button type="button" className="text-btn" style={{ padding: '8px 0 0' }} onClick={() => refresh(true)}>
-                  Try again
-                </button>
-                {needsLocation && (
-                  <button type="button" className="text-btn" style={{ padding: '8px 0 0', color: 'var(--accent)' }} onClick={() => setLocationOpen(true)}>
-                    Pick a city instead
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, paddingBottom: 4, textAlign: 'right', minWidth: 0 }}>
+            {weather ? (
+              <>
+                <WeatherGlyph icon={weather.icon} size={26} />
+                <span className="grot" style={{ fontSize: 22 }}>
+                  {weather.condition}
+                </span>
+                <span className="label muted">
+                  Feels {weather.feelsLike}° · H {weather.high}° · L {weather.low}°
+                </span>
+                {weather.place && (
+                  <button type="button" className="label" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }} onClick={() => setLocationOpen(true)}>
+                    {weather.place}
                   </button>
                 )}
-              </div>
+              </>
+            ) : (
+              <span className="grot" style={{ fontSize: 22 }}>
+                {status === 'loading' ? 'Forecast…' : 'No forecast'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {!weather && status === 'error' && (
+          <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--muted)', lineHeight: 1.45, paddingBottom: 10 }}>
+            {error ?? 'Weather unavailable.'}
+            {denied && ' On iPhone: Settings → Privacy & Security → Location Services → Safari Websites → While Using.'}
+            <div style={{ display: 'flex', gap: 18 }}>
+              <button type="button" className="text-btn" style={{ color: 'var(--ink)' }} onClick={() => refresh(true)}>
+                Try again
+              </button>
+              {needsLocation && (
+                <button type="button" className="text-btn" style={{ color: 'var(--ink)', textDecoration: 'underline', textUnderlineOffset: 3 }} onClick={() => setLocationOpen(true)}>
+                  Pick a city
+                </button>
+              )}
             </div>
-          )
+          </div>
         )}
       </header>
 
       {weather && weather.hours.length > 0 && (
-        <div
-          className="hscroll"
-          style={{ flexShrink: 0, padding: '10px 16px', gap: 16, background: 'var(--track-bg)', boxShadow: 'inset 0 2px 4px var(--track-shadow), 0 1px 0 var(--hair-hi), 0 2px 0 var(--hair-sh)' }}
-        >
-          {weather.hours.map((h) => (
-            <div key={h.time} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 32, flexShrink: 0 }}>
-              <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: '0.04em', color: 'var(--muted)' }}>{h.time}</span>
-              <WeatherGlyph icon={h.icon} />
-              <span style={{ fontWeight: 700, fontSize: 12 }}>{h.temp}°</span>
+        <div className="hscroll rule-t rule-b" style={{ margin: '0 20px' }}>
+          {weather.hours.map((h, i) => (
+            <div key={h.time} style={{ flex: '1 0 46px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 0', borderLeft: i ? '1px solid var(--rule-soft)' : 'none' }}>
+              <span className="index">{h.time}</span>
+              <WeatherGlyph icon={h.icon} size={15} />
+              <span style={{ fontWeight: 700, fontSize: 13 }}>{h.temp}°</span>
             </div>
           ))}
         </div>
       )}
 
-      <section style={{ flexShrink: 0, padding: '14px 24px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <button type="button" className="primary-btn" style={{ minHeight: 44 }} onClick={() => setIdeas(generateIdeas(items, logs, weather))}>
-          <SparkleIcon />
-          {ideas ? 'Show new ideas' : 'Get outfit ideas'}
-        </button>
-        {ideas ? (
-          <button type="button" className="muted" style={{ fontSize: 11, fontWeight: 600, textAlign: 'center', padding: 2 }} onClick={() => setIdeas(null)}>
-            Hide ideas
+      <section style={{ padding: '12px 20px 0' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button type="button" className="primary-btn" onClick={() => setIdeas(generateIdeas(items, logs, weather))}>
+            <span>{ideas ? 'New ideas' : 'Get outfit ideas'}</span>
+            <span style={{ fontWeight: 500, letterSpacing: '0.08em', opacity: 0.6 }}>{ideas ? 'Shuffle ↻' : 'Optional →'}</span>
           </button>
-        ) : (
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textAlign: 'center' }}>Optional — just a nudge if you want one.</span>
+          {ideas && (
+            <button type="button" className="primary-btn outline center" aria-label="Hide ideas" style={{ width: 48, flexShrink: 0, padding: 0, fontSize: 18 }} onClick={() => setIdeas(null)}>
+              ×
+            </button>
+          )}
+        </div>
+        {ideas && (
+          <div>
+            {'ideas' in ideas ? (
+              ideas.ideas.map((text, i) => (
+                <div key={text} className="hair-b" style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: 8, padding: '7px 0', alignItems: 'baseline' }}>
+                  <span className="index">{idx(i)}</span>
+                  <span style={{ fontWeight: 600, fontSize: 13.5, lineHeight: 1.25, letterSpacing: '-0.02em' }}>{text}</span>
+                </div>
+              ))
+            ) : (
+              <div className="hair-b" style={{ padding: '10px 0', fontWeight: 600, fontSize: 14, color: 'var(--muted)' }}>
+                Add {ideas.missing.join(' and ')} to your closet — ideas come from your own clothes.
+              </div>
+            )}
+          </div>
         )}
       </section>
 
-      {ideas && (
-        <div style={{ flexShrink: 0, margin: '4px 24px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {'ideas' in ideas ? (
-            ideas.ideas.map((text) => (
-              <div key={text} className="card" style={{ padding: '10px 14px', fontSize: 13, fontWeight: 600 }}>
-                {text}
-              </div>
-            ))
-          ) : (
-            <div className="card" style={{ padding: '10px 14px', fontSize: 13, fontWeight: 600, color: 'var(--muted)' }}>
-              Add {ideas.missing.join(' and ')} to your closet and ideas will come from your own clothes.
-            </div>
-          )}
-        </div>
-      )}
-
-      <div style={{ flexShrink: 0, padding: '14px 24px 0', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <span className="label">Log today’s fit</span>
-        <span style={{ fontWeight: 600, fontSize: 11, letterSpacing: '0.04em', color: 'var(--muted)' }}>
-          {todays.length} {todays.length === 1 ? 'piece' : 'pieces'}
+      <div style={{ padding: '14px 20px 6px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <span className="label">Today’s fit</span>
+        <span className="label muted">
+          {String(todays.length).padStart(2, '0')} {todays.length === 1 ? 'piece' : 'pieces'}
         </span>
       </div>
 
-      <div style={{ flexShrink: 0, padding: '8px 24px 0', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-        {CATEGORIES.map((c) => {
-          const worn = todays.filter((i) => i.category === c);
-          return (
-            <button
-              key={c}
-              type="button"
-              className="card"
-              onClick={() => setPicker(c)}
-              style={{ minHeight: 48, padding: '8px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2, minWidth: 0 }}
-            >
-              <span style={{ fontWeight: 600, fontSize: 13, letterSpacing: '0.02em' }}>{TILE_LABEL[c]}</span>
-              {worn.length ? (
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                  <span className="swatch" style={{ background: worn[0].color.hex }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {worn[0].name}
-                    {worn.length > 1 ? ` +${worn.length - 1}` : ''}
-                  </span>
-                </span>
-              ) : (
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--accent)' }}>ADD</span>
-              )}
-            </button>
-          );
-        })}
+      <div className="hairgrid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', margin: '0 20px', borderLeft: '1px solid var(--rule)', borderRight: '1px solid var(--rule)' }}>
+        {CATEGORIES.map((c, i) => (
+          <LogTile key={c} index={i} label={TILE_LABEL[c]} worn={todays.filter((it) => it.category === c)} onClick={() => setPicker(c)} />
+        ))}
       </div>
 
-      <div style={{ flexShrink: 0, display: 'flex', gap: 10, padding: '10px 24px 0' }}>
-        <Stat value={String(streak)} label="day streak" />
-        <Stat value={thrifted === null ? '—' : `${thrifted}%`} label="thrifted" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', margin: '10px 20px 0' }} className="rule-b">
+        <Stat value={String(streak)} label="Day streak" />
+        <Stat value={thrifted === null ? '—' : `${thrifted}%`} label="Thrifted" divider />
       </div>
 
       {/* Lowest priority: takes whatever height is left and hides itself when it doesn't fit. */}
-      <div ref={quoteBox} style={{ flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}>
-        <figure
-          ref={quoteCard}
-          className="card"
-          style={{ margin: '10px 24px 12px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 5, visibility: quoteFits ? 'visible' : 'hidden' }}
-        >
-          <blockquote className="serif" style={{ margin: 0, fontSize: 15, lineHeight: 1.35 }}>
+      <div ref={quoteBox} style={{ flex: '1 1 0', minHeight: 0, overflow: 'hidden', flexShrink: 1 }}>
+        <figure ref={quoteCard} style={{ margin: '12px 20px 10px', visibility: quoteFits ? 'visible' : 'hidden' }}>
+          <blockquote className="display-italic" style={{ margin: 0, fontSize: 19, lineHeight: 1.2 }}>
             “{quote.text}”
           </blockquote>
-          <figcaption className="sublabel">— {quote.author}</figcaption>
+          <figcaption className="label muted" style={{ marginTop: 6 }}>
+            {quote.author}
+          </figcaption>
         </figure>
       </div>
 
@@ -244,13 +219,68 @@ export function Today() {
   );
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
+/** A log cell: empty = index + name + ADD; logged = the piece's photo or its color, like a record sleeve. */
+function LogTile({ index, label, worn, onClick }: { index: number; label: string; worn: ClothingItem[]; onClick: () => void }) {
+  const first = worn[0];
+  const photo = usePhotoUrl(first?.photoId);
+  const fill = first && !photo ? first.color.hex : undefined;
+  const fg = photo ? '#FFFFFF' : fill ? textOn(fill) : undefined;
   return (
-    <div className="card" style={{ flex: 1, padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-      <span className="serif emboss" style={{ fontSize: 22 }}>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        position: 'relative',
+        height: 58,
+        padding: '8px 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        overflow: 'hidden',
+        minWidth: 0,
+        background: fill ?? 'var(--paper)',
+        color: fg,
+      }}
+    >
+      {photo && (
+        <>
+          <img src={photo} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,0.55), rgba(0,0,0,0) 70%)' }} />
+        </>
+      )}
+      <span style={{ position: 'relative', display: 'flex', justifyContent: 'space-between' }}>
+        <span className="index" style={{ color: fg ? 'inherit' : undefined, opacity: fg ? 0.75 : 1 }}>
+          {idx(index)}
+        </span>
+        {worn.length === 0 ? (
+          <span className="label" style={{ color: 'var(--ink)' }}>
+            + Add
+          </span>
+        ) : (
+          worn.length > 1 && <span className="label">+{worn.length - 1}</span>
+        )}
+      </span>
+      <span style={{ position: 'relative', display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+        <span className="grot" style={{ fontSize: 20, flexShrink: 0 }}>
+          {label}
+        </span>
+        {first && (
+          <span style={{ fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.85 }}>{first.name}</span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function Stat({ value, label, divider }: { value: string; label: string; divider?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, padding: '10px 0 10px', paddingLeft: divider ? 14 : 0, borderLeft: divider ? '1px solid var(--rule-soft)' : 'none' }}>
+      <span className="display" style={{ fontSize: 52 }}>
         {value}
       </span>
-      <span className="sublabel">{label}</span>
+      <span className="label muted" style={{ paddingRight: divider ? 0 : 14, textAlign: 'right' }}>
+        {label}
+      </span>
     </div>
   );
 }

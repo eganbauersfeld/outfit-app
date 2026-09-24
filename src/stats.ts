@@ -156,12 +156,16 @@ export function trends(period: Period, logs: WearLogEntry[], itemsById: Map<stri
   };
 }
 
-/** Days in the gallery's week groups, newest first. */
-export function galleryWeeks(today = todayKey()) {
-  const thisStart = weekStart(today);
-  const thisWeek: string[] = [];
-  for (let d = today; d >= thisStart; d = addDays(d, -1)) thisWeek.push(d);
-  const lastWeek: string[] = [];
-  for (let i = 1; i <= 7; i++) lastWeek.push(addDays(thisStart, -i));
-  return { thisWeek, lastWeek };
+/** Gallery week groups (Mon–Sun), newest first; the current week stops at today. */
+export function galleryWeeks(count = 6, today = todayKey()) {
+  const weeks: { title: string; days: string[] }[] = [];
+  let start = weekStart(today);
+  for (let w = 0; w < count; w++) {
+    const days: string[] = [];
+    const end = w === 0 ? today : addDays(start, 6);
+    for (let d = end; d >= start; d = addDays(d, -1)) days.push(d);
+    weeks.push({ title: w === 0 ? 'This week' : w === 1 ? 'Last week' : `Week of ${shortLabel(start)}`, days });
+    start = addDays(start, -7);
+  }
+  return weeks;
 }

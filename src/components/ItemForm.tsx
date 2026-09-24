@@ -154,7 +154,7 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
           <label
             className="color-dot pressable"
             aria-label="Custom color"
-            style={{ background: isPreset ? 'conic-gradient(#d7263d,#e6c84b,#4c8c5c,#3a6ea5,#8e7cc3,#d7263d)' : draft.color.hex, outline: isPreset ? undefined : '2px solid var(--ink)', outlineOffset: 2, cursor: 'pointer' }}
+            style={{ background: isPreset ? 'conic-gradient(#d7263d,#e6c84b,#4c8c5c,#3a6ea5,#8e7cc3,#d7263d)' : draft.color.hex, boxShadow: isPreset ? undefined : 'inset 0 0 0 3px var(--paper), inset 0 0 0 5px var(--ink)', cursor: 'pointer' }}
           >
             <input
               type="color"
@@ -199,7 +199,7 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
 
       {error && <p style={{ color: '#c62f3c', fontWeight: 600, fontSize: 13, margin: '0 0 12px' }}>{error}</p>}
 
-      <button type="button" className="primary-btn solid" disabled={busy} onClick={save}>
+      <button type="button" className="primary-btn center" disabled={busy} onClick={save}>
         {item ? 'Save changes' : 'Add to closet'}
       </button>
       {item && (

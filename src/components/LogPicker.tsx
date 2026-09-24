@@ -33,17 +33,17 @@ export function LogPicker({ category, label, date, onClose, onAddNew }: { catego
           const on = logged.has(item.id);
           return (
             <button key={item.id} type="button" aria-pressed={on} onClick={() => toggleLogged(date, item.id)} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div className="photo-well" style={on ? { outline: '2px solid var(--accent)', outlineOffset: 2 } : undefined}>
+              <div className="photo-well" style={on ? { boxShadow: 'inset 0 0 0 3px var(--ink)' } : undefined}>
                 <ItemPhoto photoId={item.photoId} />
                 {on && (
                   <span
-                    style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 99, background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
+                    style={{ position: 'absolute', top: 0, right: 0, width: 24, height: 24, background: 'var(--ink)', color: 'var(--paper)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
                     <CheckIcon size={13} />
                   </span>
                 )}
               </div>
-              <span style={{ fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 5, textAlign: 'left' }}>
                 <span className="swatch" style={{ background: item.color.hex }} />
                 {item.name}
               </span>
@@ -51,7 +51,7 @@ export function LogPicker({ category, label, date, onClose, onAddNew }: { catego
           );
         })}
         <button type="button" onClick={onAddNew} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div className="photo-well" style={{ borderStyle: 'dashed' }}>
+          <div className="photo-well" style={{ border: '1px dashed var(--rule)', background: 'transparent', color: 'var(--ink)' }}>
             <PlusIcon size={18} />
           </div>
           <span className="sublabel">New piece</span>

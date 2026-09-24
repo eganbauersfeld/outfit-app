@@ -100,7 +100,8 @@ export function useStore() {
 // ---------- App-wide settings (theme, accent, closet columns) ----------
 
 export type Theme = 'light' | 'dark';
-export type Accent = 'red' | 'ink' | 'green';
+export type Accent = 'yellow' | 'red' | 'ink';
+const ACCENTS: Accent[] = ['yellow', 'red', 'ink'];
 
 interface Settings {
   theme: Theme;
@@ -130,12 +131,15 @@ function write(key: string, value: string) {
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || 'light');
-  const [accent, setAccentState] = useState<Accent>(() => (read('outfit.accent') as Accent) || 'red');
+  const [accent, setAccentState] = useState<Accent>(() => {
+    const saved = read('outfit.accent') as Accent;
+    return ACCENTS.includes(saved) ? saved : 'yellow';
+  });
   const [columns, setColumnsState] = useState<3 | 4>(() => (read('outfit.columns') === '4' ? 4 : 3));
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#1B1A1E' : '#FDFDFB');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0F0F0E' : '#E7E6E2');
   }, [theme]);
   useEffect(() => {
     document.documentElement.dataset.accent = accent;

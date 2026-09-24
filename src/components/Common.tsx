@@ -6,8 +6,8 @@ import { MoonIcon, PhotoPlaceholder, SunIcon } from './Icons';
 export function ThemeToggle() {
   const { theme, toggleTheme } = useSettings();
   return (
-    <button type="button" className="round-btn" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleTheme}>
-      {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+    <button type="button" className="icon-btn" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleTheme}>
+      {theme === 'dark' ? <SunIcon size={18} /> : <MoonIcon size={17} />}
     </button>
   );
 }
@@ -15,7 +15,7 @@ export function ThemeToggle() {
 // Object URLs are cached per photo id so re-renders don't flicker.
 const urlCache = new Map<string, string>();
 
-export function ItemPhoto({ photoId, iconSize = 24 }: { photoId?: string; iconSize?: number }) {
+export function usePhotoUrl(photoId?: string) {
   const [url, setUrl] = useState(() => (photoId ? urlCache.get(photoId) : undefined));
   useEffect(() => {
     if (!photoId) return setUrl(undefined);
@@ -32,6 +32,11 @@ export function ItemPhoto({ photoId, iconSize = 24 }: { photoId?: string; iconSi
       alive = false;
     };
   }, [photoId]);
+  return url;
+}
+
+export function ItemPhoto({ photoId, iconSize = 24 }: { photoId?: string; iconSize?: number }) {
+  const url = usePhotoUrl(photoId);
   return url ? <img src={url} alt="" /> : <PhotoPlaceholder size={iconSize} />;
 }
 
@@ -49,11 +54,8 @@ export function Sheet({ title, onClose, children, action }: { title: string; onC
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-grip" />
-        <div className="sheet-head groove">
-          <h2 className="serif sheet-title emboss" style={{ margin: 0 }}>
-            {title}
-          </h2>
+        <div className="sheet-head">
+          <h2 className="display sheet-title">{title}</h2>
           {action ?? (
             <button type="button" className="text-btn" onClick={onClose}>
               Done
@@ -74,3 +76,6 @@ export function Switch({ label, checked, onChange }: { label: string; checked: b
     </div>
   );
 }
+
+/** Two-digit index, Swiss style: 01, 02 … */
+export const idx = (n: number) => String(n + 1).padStart(2, '0');

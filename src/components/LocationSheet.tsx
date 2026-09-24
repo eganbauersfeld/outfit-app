@@ -34,7 +34,7 @@ export function LocationSheet({ onClose }: { onClose: () => void }) {
       {saved?.source === 'manual' && (
         <button
           type="button"
-          className="primary-btn"
+          className="primary-btn center"
           style={{ marginBottom: 18 }}
           onClick={() => {
             switchToDeviceLocation();
@@ -58,7 +58,7 @@ export function LocationSheet({ onClose }: { onClose: () => void }) {
           <button
             key={`${p.lat},${p.lon}`}
             type="button"
-            className="card"
+            className="hair-b"
             style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}
             onClick={() => {
               setManualLocation(p);

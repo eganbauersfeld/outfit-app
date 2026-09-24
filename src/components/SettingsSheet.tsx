@@ -6,9 +6,9 @@ import { getSavedLocation } from '../weather';
 import { Sheet } from './Common';
 
 const ACCENTS: { value: Accent; label: string; swatch: string }[] = [
+  { value: 'yellow', label: 'Yellow', swatch: '#F0B429' },
   { value: 'red', label: 'Red', swatch: '#D7263D' },
   { value: 'ink', label: 'Ink', swatch: 'var(--ink)' },
-  { value: 'green', label: 'Green', swatch: '#2E7D5B' },
 ];
 
 export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void; onPickLocation: () => void }) {
@@ -91,10 +91,10 @@ export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void
           Everything lives on this phone only — {items.length} pieces, {logs.length} logged days. Export now and then so a reset doesn’t wipe it.
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className="primary-btn" onClick={doExport}>
+          <button type="button" className="primary-btn center" onClick={doExport}>
             Export
           </button>
-          <button type="button" className="primary-btn" onClick={() => fileRef.current?.click()}>
+          <button type="button" className="primary-btn center outline" onClick={() => fileRef.current?.click()}>
             Import
           </button>
         </div>

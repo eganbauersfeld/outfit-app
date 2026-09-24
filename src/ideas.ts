@@ -69,8 +69,8 @@ export function generateIdeas(items: ClothingItem[], logs: WearLogEntry[], w: We
     usedTops.add(top.id);
 
     let line = [top, bottom, shoes].filter(Boolean).map((i) => i!.name).join(' + ');
-    if (outer) line += `, ${outer.name} ${outerwear === 'required' ? 'on top' : 'for the walk over'}`;
-    if (shades) line += `, ${shades.name}`;
+    if (outer) line += ` · ${outer.name} ${outerwear === 'required' ? 'on top' : 'layer'}`;
+    if (shades) line += ` · ${shades.name}`;
     ideas.push(line);
   }
 

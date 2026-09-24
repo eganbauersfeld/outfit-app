@@ -1,16 +1,16 @@
 import { useMemo, useRef, useState } from 'react';
-import { ThemeToggle } from '../components/Common';
+import { idx, ThemeToggle } from '../components/Common';
 import { trends, type Period } from '../stats';
 import { useStore } from '../store';
 import type { Category } from '../types';
 
-const W = 342;
-const TOP = 8;
-const BOTTOM = 100;
-const UP = '#3FAE58';
+const W = 350;
+const TOP = 6;
+const BOTTOM = 96;
+const UP = '#2E9E57';
 const DOWN = '#E4572E';
 const COLORS_LINE = '#3A6EA5';
-const THRIFT_LINE = '#D4AF37';
+const THRIFT_LINE = 'var(--muted)';
 const CATEGORY_DOT: Record<Category, string> = {
   Top: '#3A6EA5',
   Bottom: '#4C8C5C',
@@ -43,17 +43,14 @@ export function Trends() {
 
   return (
     <>
-      <header className="screen-header groove">
-        <div>
-          <h1 className="serif screen-title emboss" style={{ margin: 0 }}>
-            Trends
-          </h1>
-          <div className="screen-sub">Your style over time</div>
+      <header className="screen-header">
+        <h1 className="display screen-title">Trends</h1>
+        <div style={{ marginRight: -10, paddingBottom: 4 }}>
+          <ThemeToggle />
         </div>
-        <ThemeToggle />
       </header>
 
-      <div role="tablist" style={{ padding: '14px 24px 0', display: 'flex', gap: 24 }}>
+      <div role="tablist" className="rule-t rule-b" style={{ margin: '0 20px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
         {(['7d', '3mo'] as const).map((p) => (
           <button
             key={p}
@@ -61,15 +58,15 @@ export function Trends() {
             role="tab"
             aria-selected={period === p}
             onClick={() => setPeriod(p)}
-            style={{ padding: '6px 0 0', fontWeight: 700, fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: period === p ? 'var(--ink)' : 'var(--muted)' }}
+            className="label"
+            style={{ padding: '11px 0', textAlign: 'center', background: period === p ? 'var(--ink)' : 'transparent', color: period === p ? 'var(--paper)' : 'var(--muted)' }}
           >
-            <span style={{ display: 'block', paddingBottom: 6, borderBottom: `2px solid ${period === p ? 'var(--accent)' : 'transparent'}` }}>{p === '7d' ? '7 Days' : '3 Months'}</span>
+            {p === '7d' ? '7 Days' : '3 Months'}
           </button>
         ))}
       </div>
 
-      <div
-        className="card"
+      <section
         onPointerDown={(e) => (swipeX.current = e.clientX)}
         onPointerUp={(e) => {
           if (swipeX.current == null) return;
@@ -78,70 +75,54 @@ export function Trends() {
           if (Math.abs(dx) >= 30) setPeriod(dx > 0 ? '3mo' : '7d');
         }}
         onPointerCancel={() => (swipeX.current = null)}
-        style={{ touchAction: 'pan-y', margin: '16px 24px 0', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6, boxShadow: '0 1px 0 var(--card-hi) inset, 0 2px 6px var(--card-shadow)', userSelect: 'none' }}
+        style={{ touchAction: 'pan-y', userSelect: 'none', padding: '16px 20px 0' }}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span className="serif emboss" style={{ fontSize: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14 }}>
+          <span className="display" style={{ fontSize: 104, marginLeft: -4 }}>
             {t.headline}
           </span>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>{is7 ? 'pieces logged, today' : 'pieces logged/day, this week'}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingBottom: 6 }}>
+            <span className="grot" style={{ fontSize: 18, color: trendColor }}>
+              {t.up ? '▲' : '▼'} {t.deltaPct === null ? '—' : `${Math.abs(t.deltaPct)}%`}
+            </span>
+            <span className="label">{is7 ? 'Pieces logged today' : 'Pieces / day, this week'}</span>
+            <span className="label muted">vs. {is7 ? '7 days ago' : '3 months ago'}</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: trendColor }}>
-            {t.up ? '▲' : '▼'} {t.deltaPct === null ? '—' : `${Math.abs(t.deltaPct)}%`}
-          </span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>{is7 ? 'past 7 days' : 'past 3 months'}</span>
-        </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginTop: 2 }}>
-          {t.colorCount} {t.colorCount === 1 ? 'color' : 'colors'} · {t.categoryCount} {t.categoryCount === 1 ? 'category' : 'categories'} in rotation {is7 ? 'this week' : 'this quarter'}
-        </span>
+        <p style={{ margin: '12px 0 0', fontWeight: 700, fontSize: 15, letterSpacing: '-0.02em' }}>
+          {t.colorCount} {t.colorCount === 1 ? 'color' : 'colors'} · {t.categoryCount} {t.categoryCount === 1 ? 'category' : 'categories'} in rotation {is7 ? 'this week' : 'this quarter'}.
+        </p>
 
-        <svg viewBox={`0 0 ${W} 110`} width="100%" height="110" style={{ marginTop: 8, overflow: 'visible', filter: 'drop-shadow(0 2px 2px var(--card-shadow))' }} aria-label="Trend chart">
-          <defs>
-            <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={trendColor} stopOpacity="0.22" />
-              <stop offset="100%" stopColor={trendColor} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <line x1="0" y1={primary.first.y} x2={W} y2={primary.first.y} stroke="var(--hair-sh)" strokeWidth="1" strokeDasharray="3 4" />
-          <path d={primary.area} fill="url(#trendFill)" />
-          <path d={colors.line} fill="none" stroke={COLORS_LINE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
-          <path d={thrift.line} fill="none" stroke={THRIFT_LINE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
-          <path d={primary.line} fill="none" stroke={trendColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={colors.last.x} cy={colors.last.y} r="3.5" fill={COLORS_LINE} stroke="var(--card-top)" strokeWidth="1.5" />
-          <circle cx={thrift.last.x} cy={thrift.last.y} r="3.5" fill={THRIFT_LINE} stroke="var(--card-top)" strokeWidth="1.5" />
-          <circle cx={primary.last.x} cy={primary.last.y} r="4.5" fill={trendColor} stroke="var(--card-top)" strokeWidth="1.5" />
+        <svg viewBox={`0 0 ${W} 104`} width="100%" height="120" preserveAspectRatio="none" style={{ marginTop: 14, overflow: 'visible', display: 'block' }} aria-label="Trend chart">
+          {[TOP, (TOP + BOTTOM) / 2, BOTTOM].map((y) => (
+            <line key={y} x1="0" y1={y} x2={W} y2={y} stroke="var(--rule-soft)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          ))}
+          <path d={primary.area} fill={trendColor} opacity="0.1" />
+          <path d={thrift.line} fill="none" stroke={THRIFT_LINE} strokeWidth="1.25" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+          <path d={colors.line} fill="none" stroke={COLORS_LINE} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          <path d={primary.line} fill="none" stroke={trendColor} strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
         </svg>
+        <div className="rule-t" style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 6 }}>
+          <span className="index">{t.startLabel}</span>
+          <span style={{ display: 'flex', gap: 5 }} aria-hidden>
+            <span style={{ width: 14, height: 3, background: is7 ? 'var(--ink)' : 'var(--rule-soft)' }} />
+            <span style={{ width: 14, height: 3, background: is7 ? 'var(--rule-soft)' : 'var(--ink)' }} />
+          </span>
+          <span className="index">{t.endLabel}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 16, paddingTop: 10, flexWrap: 'wrap' }}>
+          <Legend swatch={<span style={{ width: 14, height: 3, background: trendColor }} />} label="Pieces logged" />
+          <Legend swatch={<span style={{ width: 14, height: 2, background: COLORS_LINE }} />} label="Colors worn" />
+          <Legend swatch={<span style={{ width: 14, height: 0, borderTop: `2px dashed ${THRIFT_LINE}` }} />} label="Thrifted %" />
+        </div>
+      </section>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 1px' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)' }}>{t.startLabel}</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)' }}>{t.endLabel}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, paddingTop: 2 }} aria-hidden>
-          <span style={{ width: 5, height: 5, borderRadius: 999, background: is7 ? 'var(--accent)' : 'var(--card-border)' }} />
-          <span style={{ width: 5, height: 5, borderRadius: 999, background: is7 ? 'var(--card-border)' : 'var(--accent)' }} />
-        </div>
-        <div style={{ display: 'flex', gap: 14, paddingTop: 4, flexWrap: 'wrap' }}>
-          <Legend color={trendColor} label="Pieces logged" />
-          <Legend color={COLORS_LINE} label="Colors worn" />
-          <Legend color={THRIFT_LINE} label="Thrifted %" />
-        </div>
-      </div>
-
-      <div className="label" style={{ padding: '26px 24px 0' }}>
-        Breakdown
-      </div>
-      {!t.hasData && <div className="empty">Nothing logged {is7 ? 'this week' : 'in the last 3 months'} yet — log a fit on Today.</div>}
-      {t.hasData && (
+      {!t.hasData ? (
+        <div className="empty">Nothing logged {is7 ? 'this week' : 'in the last 3 months'} yet — log a fit on Today.</div>
+      ) : (
         <>
-          <div className="sublabel" style={{ padding: '12px 24px 0' }}>
-            By color
-          </div>
-          <Bars rows={t.byColor.map((r) => ({ name: r.name, dot: r.hex, value: r.value }))} />
-          <div className="sublabel" style={{ padding: '20px 24px 0' }}>
-            By category
-          </div>
-          <Bars rows={t.byCategory.map((r) => ({ name: r.name, dot: CATEGORY_DOT[r.category], value: r.value }))} />
+          <Breakdown title="By color" rows={t.byColor.map((r) => ({ name: r.name, dot: r.hex, value: r.value }))} />
+          <Breakdown title="By category" rows={t.byCategory.map((r) => ({ name: r.name, dot: CATEGORY_DOT[r.category], value: r.value }))} />
         </>
       )}
       <div style={{ height: 24 }} />
@@ -149,32 +130,39 @@ export function Trends() {
   );
 }
 
-function Legend({ color, label }: { color: string; label: string }) {
+function Legend({ swatch, label }: { swatch: React.ReactNode; label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, letterSpacing: '0.03em', color: 'var(--muted)', textTransform: 'uppercase' }}>
-      <span style={{ width: 8, height: 8, borderRadius: 999, background: color, display: 'inline-block' }} />
+    <span className="label muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {swatch}
       {label}
     </span>
   );
 }
 
-/** Each bar is sized against the top value in its own list. */
-function Bars({ rows }: { rows: { name: string; dot: string; value: number }[] }) {
+/** Numbered rows; each bar is sized against the top value in its own list. */
+function Breakdown({ title, rows }: { title: string; rows: { name: string; dot: string; value: number }[] }) {
   const max = Math.max(...rows.map((r) => r.value), 1);
   return (
-    <div style={{ padding: '8px 24px 0', display: 'flex', flexDirection: 'column', gap: 7 }}>
-      {rows.map((r) => (
-        <div key={r.name} style={{ position: 'relative', borderRadius: 3, background: 'var(--bar-track)', border: '1px solid var(--card-border)', boxShadow: 'inset 0 1px 3px var(--card-shadow)', overflow: 'hidden' }}>
-          <div
-            style={{ position: 'absolute', inset: 0, width: `${Math.round((r.value / max) * 100)}%`, background: 'linear-gradient(180deg, var(--card-top), var(--card-bot))', boxShadow: '0 1px 0 var(--card-hi) inset' }}
-          />
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px' }}>
-            <span style={{ width: 9, height: 9, borderRadius: 999, background: r.dot, border: '1px solid rgba(0,0,0,0.15)', boxShadow: '0 1px 1px rgba(17,17,17,0.2)', flexShrink: 0 }} />
-            <span style={{ flexGrow: 1, fontWeight: 600, fontSize: 13 }}>{r.name}</span>
-            <span style={{ fontWeight: 700, fontSize: 12 }}>{r.value}x</span>
-          </div>
+    <section style={{ padding: '26px 20px 0' }}>
+      <div className="rule-b" style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 6 }}>
+        <span className="label">{title}</span>
+        <span className="label muted">Times worn</span>
+      </div>
+      {rows.map((r, i) => (
+        <div key={r.name} className="hair-b" style={{ display: 'grid', gridTemplateColumns: '24px 96px 1fr 38px', alignItems: 'center', gap: 10, padding: '9px 0' }}>
+          <span className="index">{idx(i)}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 14, letterSpacing: '-0.02em', minWidth: 0 }}>
+            <span className="swatch" style={{ background: r.dot, width: 10, height: 10 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+          </span>
+          <span style={{ height: 8, background: 'var(--rule-soft)', position: 'relative' }}>
+            <span style={{ position: 'absolute', inset: 0, width: `${Math.round((r.value / max) * 100)}%`, background: 'var(--ink)' }} />
+          </span>
+          <span className="display" style={{ fontSize: 20, textAlign: 'right', lineHeight: 1 }}>
+            {r.value}
+          </span>
         </div>
       ))}
-    </div>
+    </section>
   );
 }
