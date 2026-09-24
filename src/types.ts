@@ -59,6 +59,16 @@ export interface WearLogEntry {
   /** Local calendar date, YYYY-MM-DD. */
   date: string;
   source: 'manual' | 'suggested';
+  /** Feels-like range during the day it was worn, stamped when logged (lets the engine learn his comfort). */
+  weather?: { feelsMin: number; feelsMax: number };
+}
+
+/** A reaction to a suggested outfit; the engine learns which pairings he likes. */
+export interface Feedback {
+  id: string;
+  itemIds: string[];
+  verdict: 'like' | 'dislike';
+  date: string;
 }
 
 export const COLOR_PRESETS: { name: string; hex: string }[] = [

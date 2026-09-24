@@ -4,7 +4,14 @@ Personal outfit log / closet / style-trends PWA ("Editorial Mono" design). Singl
 
 - **Stack:** Vite + React + TypeScript, `idb` (IndexedDB) for items, wear logs and photo blobs, Open-Meteo for weather (keyless, device geolocation), hand-rolled SVG chart, `vite-plugin-pwa` for manifest + service worker.
 - **Screens:** Today · Ideas · Closet · Trends · Gallery (`src/screens/`).
-- **Ideas:** a weather-based starter line (`starterFor` in `src/ideas.ts`), then combos on request — from Claude (`src/ai.ts`, `claude-opus-5`, called from the phone with the user's own API key saved in Settings) or from rules when there's no key or the call fails.
+- **Ideas:** a rules engine in `src/engine/` (no AI, no network):
+  - `day.ts` turns the hourly forecast (feels-like, rain %, wind, UV) into the 8AM–8PM wear window.
+  - `garment.ts` infers each piece's warmth, formality and practical traits (waterproof, boots, rain-delicate shoes) from category, sleeves/length, material and name keywords.
+  - `thermal.ts` checks an outfit hour by hour against a warmth curve (legs count half; the layer goes on when it helps and always in rain).
+  - `color.ts` scores color harmony (neutrals incl. navy/olive/tan/denim, one pop of color, related vs. clashing hues, contrast, denim-on-denim, two graphics).
+  - `taste.ts` learns from his logs and ♥ / "not for me" feedback: rotation, pairings he actually wears, whether he runs warm or cold, whether he wears shorts on warm days, the temperatures each piece gets worn in.
+  - `stylist.ts` scores every outfit the closet can make, picks three distinct ones (best / bring back a neglected piece / a color move or zero-thought option), explains them, flags closet gaps, and writes the weather starter.
+  - `npm test` runs the scenario tests in `stylist.test.ts`.
 - **Data:** `src/types.ts` (ClothingItem, WearLogEntry), `src/db.ts`, derived stats in `src/stats.ts`, outfit ideas in `src/ideas.ts`.
 
 ## Develop

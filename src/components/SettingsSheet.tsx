@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { exportBackup, importBackup } from '../db';
 import { todayKey } from '../dates';
-import { getApiKey, setApiKey } from '../ai';
 import { useSettings, useStore, type Accent, type ThemePref } from '../store';
 import { getSavedLocation } from '../weather';
 import { Sheet } from './Common';
@@ -15,8 +14,6 @@ const ACCENTS: { value: Accent; label: string; swatch: string }[] = [
 export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void; onPickLocation: () => void }) {
   const location = getSavedLocation();
   const { accent, setAccent, columns, setColumns, themePref, setThemePref } = useSettings();
-  const [key, setKey] = useState(getApiKey);
-  const [keySaved, setKeySaved] = useState(!!getApiKey());
   const { reload, items, logs } = useStore();
   const [msg, setMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -102,53 +99,6 @@ export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void
               {c} columns
             </button>
           ))}
-        </div>
-      </div>
-
-      <div className="field">
-        <span className="sublabel">Outfit ideas · Claude API key</span>
-        <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: 0, lineHeight: 1.45 }}>
-          With a key, Ideas asks Claude to build combos from your closet list and the forecast (names and tags only, never photos). The key stays on this
-          phone and isn’t included in backups. Get one at console.anthropic.com.
-        </p>
-        <input
-          className="input"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="sk-ant-…"
-          value={key}
-          onChange={(e) => {
-            setKey(e.target.value);
-            setKeySaved(false);
-          }}
-          style={{ fontSize: 16, fontWeight: 600, letterSpacing: 0 }}
-        />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            className="primary-btn center"
-            disabled={!key.trim() || keySaved}
-            onClick={() => {
-              setApiKey(key);
-              setKeySaved(true);
-            }}
-          >
-            {keySaved && key ? 'Saved ✓' : 'Save key'}
-          </button>
-          {getApiKey() && (
-            <button
-              type="button"
-              className="primary-btn center outline"
-              onClick={() => {
-                setApiKey('');
-                setKey('');
-                setKeySaved(false);
-              }}
-            >
-              Remove
-            </button>
-          )}
         </div>
       </div>
 

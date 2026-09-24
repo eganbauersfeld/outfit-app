@@ -259,6 +259,25 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
       <button type="button" className="primary-btn center" disabled={busy} onClick={save}>
         {item ? 'Save changes' : 'Add to closet'}
       </button>
+      {item && (item.contexts.length === 0 || item.contexts.includes('everyday')) && (
+        <button
+          type="button"
+          className="primary-btn outline"
+          style={{ marginTop: 8 }}
+          onClick={() => {
+            try {
+              sessionStorage.setItem('outfit.anchor', item.id);
+            } catch {
+              /* ignore */
+            }
+            onClose();
+            location.hash = 'ideas';
+          }}
+        >
+          <span>Style this piece</span>
+          <span>→</span>
+        </button>
+      )}
       {item && (
         <button type="button" className="text-btn danger" style={{ display: 'block', margin: '14px auto 0' }} onClick={remove}>
           Remove from closet

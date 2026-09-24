@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import * as db from './db';
-import type { ClothingItem, WearLogEntry } from './types';
+import { dayProfile } from './engine/day';
+import { todayKey } from './dates';
+import type { ClothingItem, Feedback, WearLogEntry } from './types';
+import { readCachedWeather } from './weather';
 
 // ---------- Closet + wear log ----------
 
@@ -8,11 +11,13 @@ interface Store {
   ready: boolean;
   items: ClothingItem[];
   logs: WearLogEntry[];
+  feedback: Feedback[];
   itemsById: Map<string, ClothingItem>;
   saveItem: (item: ClothingItem, photo?: Blob | null) => Promise<void>;
   removeItem: (item: ClothingItem) => Promise<void>;
   toggleLogged: (date: string, itemId: string) => Promise<void>;
   logOutfit: (date: string, itemIds: string[]) => Promise<void>;
+  react: (itemIds: string[], verdict: Feedback['verdict']) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -22,11 +27,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [logs, setLogs] = useState<WearLogEntry[]>([]);
+  const [feedback, setFeedback] = useState<Feedback[]>([]);
 
   const reload = useCallback(async () => {
     const data = await db.loadAll();
     setItems(data.items.sort((a, b) => b.dateAdded.localeCompare(a.dateAdded)));
     setLogs(data.logs);
+    setFeedback(data.feedback);
     setReady(true);
   }, []);
 
@@ -76,7 +83,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setLogs((prev) => prev.filter((l) => l.id !== id));
         return;
       }
-      const entry: WearLogEntry = { id, date, itemIds, source: existing?.source ?? 'manual' };
+      const entry: WearLogEntry = { id, date, itemIds, source: existing?.source ?? 'manual', weather: existing?.weather ?? weatherStamp(date) };
       await db.putLog(entry);
       setLogs((prev) => [...prev.filter((l) => l.id !== id), entry]);
     },
@@ -85,18 +92,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // "Wear this" from Ideas: the day's log becomes exactly this outfit.
   const logOutfit = useCallback(async (date: string, itemIds: string[]) => {
-    const entry: WearLogEntry = { id: `log-${date}`, date, itemIds, source: 'suggested' };
+    const entry: WearLogEntry = { id: `log-${date}`, date, itemIds, source: 'suggested', weather: weatherStamp(date) };
     await db.putLog(entry);
     setLogs((prev) => [...prev.filter((l) => l.id !== entry.id), entry]);
+  }, []);
+
+  // 👍 / "not for me" on a suggested outfit — the stylist learns pairings from these.
+  const react = useCallback(async (itemIds: string[], verdict: Feedback['verdict']) => {
+    const f: Feedback = { id: `fb-${Date.now()}`, itemIds, verdict, date: todayKey() };
+    await db.putFeedback(f);
+    setFeedback((prev) => [...prev, f]);
   }, []);
 
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   const value = useMemo(
-    () => ({ ready, items, logs, itemsById, saveItem, removeItem, toggleLogged, logOutfit, reload }),
-    [ready, items, logs, itemsById, saveItem, removeItem, toggleLogged, logOutfit, reload],
+    () => ({ ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload }),
+    [ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload],
   );
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
+}
+
+/** Today's feels-like range, stamped on a log so the stylist can learn what he wears at what temperature. */
+function weatherStamp(date: string): WearLogEntry['weather'] {
+  if (date !== todayKey()) return undefined;
+  const w = readCachedWeather();
+  if (!w) return undefined;
+  const d = dayProfile(w);
+  return { feelsMin: d.coldFeels, feelsMax: d.warmFeels };
 }
 
 export function useStore() {

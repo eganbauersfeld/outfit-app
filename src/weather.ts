@@ -2,6 +2,16 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type WeatherIcon = 'sun' | 'partly' | 'cloud' | 'fog' | 'rain' | 'snow' | 'storm';
 
+export interface HourDetail {
+  hour: number; // 0–23 local
+  temp: number; // °F
+  feels: number; // apparent temperature, °F
+  precip: number; // precipitation probability, %
+  wind: number; // mph
+  uv: number;
+  icon: WeatherIcon;
+}
+
 export interface Weather {
   temp: number;
   feelsLike: number;
@@ -11,6 +21,8 @@ export interface Weather {
   icon: WeatherIcon;
   wet: boolean;
   hours: { time: string; temp: number; icon: WeatherIcon }[];
+  /** Every hour of the day with the detail the outfit engine needs. Missing in caches from older builds. */
+  day?: HourDetail[];
   fetchedAt: number;
   /** Set when the forecast is for a city he picked rather than device location. */
   place?: string;
@@ -138,7 +150,8 @@ async function fetchWeather(lat: number, lon: number): Promise<Weather> {
     latitude: lat.toFixed(3),
     longitude: lon.toFixed(3),
     current: 'temperature_2m,apparent_temperature,weather_code',
-    hourly: 'temperature_2m,weather_code',
+    hourly: 'temperature_2m,apparent_temperature,precipitation_probability,wind_speed_10m,uv_index,weather_code',
+    wind_speed_unit: 'mph',
     daily: 'temperature_2m_max,temperature_2m_min',
     temperature_unit: 'fahrenheit',
     timezone: 'auto',
@@ -156,10 +169,16 @@ async function fetchWeather(lat: number, lon: number): Promise<Weather> {
       hours.push({ time: hourLabel(h), temp: Math.round(j.hourly.temperature_2m[i]), icon: describe(j.hourly.weather_code[i]).icon });
     }
   });
-  const wetLater = (j.hourly.weather_code as number[]).some((c, i) => {
-    const h = Number((j.hourly.time[i] as string).slice(11, 13));
-    return h >= 7 && h <= 20 && describe(c).wet;
-  });
+  const day: HourDetail[] = (j.hourly.time as string[]).map((t, i) => ({
+    hour: Number(t.slice(11, 13)),
+    temp: Math.round(j.hourly.temperature_2m[i]),
+    feels: Math.round(j.hourly.apparent_temperature?.[i] ?? j.hourly.temperature_2m[i]),
+    precip: j.hourly.precipitation_probability?.[i] ?? 0,
+    wind: Math.round(j.hourly.wind_speed_10m?.[i] ?? 0),
+    uv: j.hourly.uv_index?.[i] ?? 0,
+    icon: describe(j.hourly.weather_code[i]).icon,
+  }));
+  const wetLater = day.some((d) => d.hour >= 7 && d.hour <= 20 && (d.icon === 'rain' || d.icon === 'snow' || d.icon === 'storm' || d.precip >= 50));
   return {
     temp: Math.round(j.current.temperature_2m),
     feelsLike: Math.round(j.current.apparent_temperature),
@@ -169,8 +188,15 @@ async function fetchWeather(lat: number, lon: number): Promise<Weather> {
     icon: now.icon,
     wet: now.wet || wetLater,
     hours,
+    day,
     fetchedAt: Date.now(),
   };
+}
+
+/** Today's cached forecast, if any — used to stamp wear logs with the weather they were worn in. */
+export function readCachedWeather(): Weather | null {
+  const w = readJson<Weather>(CACHE_KEY);
+  return w && new Date(w.fetchedAt).toDateString() === new Date().toDateString() ? w : null;
 }
 
 type State = { status: 'loading' | 'ok' | 'error'; weather: Weather | null; error?: string; needsLocation?: boolean; denied?: boolean };

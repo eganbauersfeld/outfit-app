@@ -1,20 +1,24 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { ClothingItem, WearLogEntry } from './types';
+import type { ClothingItem, Feedback, WearLogEntry } from './types';
 
 interface OutfitDB extends DBSchema {
   items: { key: string; value: ClothingItem };
   logs: { key: string; value: WearLogEntry; indexes: { date: string } };
   photos: { key: string; value: Blob };
+  feedback: { key: string; value: Feedback };
 }
 
 let dbPromise: Promise<IDBPDatabase<OutfitDB>> | null = null;
 
 function db() {
-  dbPromise ??= openDB<OutfitDB>('outfit', 1, {
-    upgrade(d) {
-      d.createObjectStore('items', { keyPath: 'id' });
-      d.createObjectStore('logs', { keyPath: 'id' }).createIndex('date', 'date');
-      d.createObjectStore('photos');
+  dbPromise ??= openDB<OutfitDB>('outfit', 2, {
+    upgrade(d, oldVersion) {
+      if (oldVersion < 1) {
+        d.createObjectStore('items', { keyPath: 'id' });
+        d.createObjectStore('logs', { keyPath: 'id' }).createIndex('date', 'date');
+        d.createObjectStore('photos');
+      }
+      if (oldVersion < 2) d.createObjectStore('feedback', { keyPath: 'id' });
     },
   });
   return dbPromise;
@@ -22,8 +26,8 @@ function db() {
 
 export async function loadAll() {
   const d = await db();
-  const [items, logs] = await Promise.all([d.getAll('items'), d.getAll('logs')]);
-  return { items, logs };
+  const [items, logs, feedback] = await Promise.all([d.getAll('items'), d.getAll('logs'), d.getAll('feedback')]);
+  return { items, logs, feedback };
 }
 
 export async function putItem(item: ClothingItem) {
@@ -46,6 +50,10 @@ export async function deleteLog(id: string) {
   await (await db()).delete('logs', id);
 }
 
+export async function putFeedback(f: Feedback) {
+  await (await db()).put('feedback', f);
+}
+
 export async function getPhoto(id: string) {
   return (await db()).get('photos', id);
 }
@@ -66,6 +74,7 @@ interface Backup {
   exportedAt: string;
   items: ClothingItem[];
   logs: WearLogEntry[];
+  feedback?: Feedback[];
   photos: Record<string, string>; // id -> data URL
 }
 
@@ -80,13 +89,13 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 
 export async function exportBackup(): Promise<Blob> {
   const d = await db();
-  const [items, logs, keys] = await Promise.all([d.getAll('items'), d.getAll('logs'), d.getAllKeys('photos')]);
+  const [items, logs, feedback, keys] = await Promise.all([d.getAll('items'), d.getAll('logs'), d.getAll('feedback'), d.getAllKeys('photos')]);
   const photos: Record<string, string> = {};
   for (const k of keys) {
     const blob = await d.get('photos', k);
     if (blob) photos[k] = await blobToDataUrl(blob);
   }
-  const backup: Backup = { app: 'outfit', version: 1, exportedAt: new Date().toISOString(), items, logs, photos };
+  const backup: Backup = { app: 'outfit', version: 1, exportedAt: new Date().toISOString(), items, logs, feedback, photos };
   return new Blob([JSON.stringify(backup)], { type: 'application/json' });
 }
 
@@ -100,10 +109,11 @@ export async function importBackup(text: string) {
     photoBlobs.push([id, await (await fetch(url)).blob()]);
   }
   const d = await db();
-  const tx = d.transaction(['items', 'logs', 'photos'], 'readwrite');
-  await Promise.all([tx.objectStore('items').clear(), tx.objectStore('logs').clear(), tx.objectStore('photos').clear()]);
+  const tx = d.transaction(['items', 'logs', 'photos', 'feedback'], 'readwrite');
+  await Promise.all([tx.objectStore('items').clear(), tx.objectStore('logs').clear(), tx.objectStore('photos').clear(), tx.objectStore('feedback').clear()]);
   for (const item of data.items) await tx.objectStore('items').put(item);
   for (const log of data.logs) await tx.objectStore('logs').put(log);
+  for (const f of data.feedback ?? []) await tx.objectStore('feedback').put(f);
   for (const [id, blob] of photoBlobs) await tx.objectStore('photos').put(blob, id);
   await tx.done;
 }

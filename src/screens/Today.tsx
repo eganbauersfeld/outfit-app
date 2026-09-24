@@ -5,7 +5,7 @@ import { WeatherGlyph } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
 import { LogPicker } from '../components/LogPicker';
 import { todayKey } from '../dates';
-import { starterFor } from '../ideas';
+import { starter as makeStarter } from '../engine/stylist';
 import { quoteOfTheDay } from '../quotes';
 import { dayStreak, thriftedPct } from '../stats';
 import { useStore } from '../store';
@@ -15,7 +15,7 @@ import { useWeather } from '../weather';
 const TILE_LABEL: Record<Category, string> = { Top: 'Top', Bottom: 'Bottom', Outerwear: 'Outerwear', Shoes: 'Shoes', Sunglasses: 'Shades', Misc: 'Misc.' };
 
 export function Today() {
-  const { logs, itemsById } = useStore();
+  const { items, logs, feedback, itemsById } = useStore();
   const { status, weather, error, needsLocation, denied, refresh } = useWeather();
   const [picker, setPicker] = useState<Category | null>(null);
   const [newIn, setNewIn] = useState<Category | null>(null);
@@ -40,7 +40,7 @@ export function Today() {
   const streak = useMemo(() => dayStreak(logs, today), [logs, today]);
   const thrifted = useMemo(() => thriftedPct(logs, itemsById), [logs, itemsById]);
   const quote = quoteOfTheDay();
-  const starter = starterFor(weather);
+  const starter = useMemo(() => makeStarter(weather, items, logs, feedback), [weather, items, logs, feedback]);
   const now = new Date();
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   const monthDay = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -124,7 +124,7 @@ export function Today() {
             <span className="label" style={{ opacity: 0.55 }}>
               Start with
             </span>
-            <span className="grot" style={{ fontSize: 17, lineHeight: 1.05, letterSpacing: '-0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span className="grot" style={{ fontSize: 17, lineHeight: 1.05, letterSpacing: '-0.03em' }}>
               {starter ? starter.line : 'Outfit ideas'}
             </span>
           </span>
