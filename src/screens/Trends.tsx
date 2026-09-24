@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { idx, ThemeToggle } from '../components/Common';
+import { idx, SettingsButton } from '../components/Common';
 import { trends, type Period } from '../stats';
 import { useStore } from '../store';
 import type { Category } from '../types';
@@ -46,7 +46,7 @@ export function Trends() {
       <header className="screen-header">
         <h1 className="display screen-title">Trends</h1>
         <div style={{ marginRight: -10, paddingBottom: 4 }}>
-          <ThemeToggle />
+          <SettingsButton />
         </div>
       </header>
 

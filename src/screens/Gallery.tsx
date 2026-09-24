@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ThemeToggle, usePhotoUrl } from '../components/Common';
+import { SettingsButton, usePhotoUrl } from '../components/Common';
 import { fromKey, shortLabel, todayKey } from '../dates';
 import { galleryWeeks, wornByDate } from '../stats';
 import { useStore } from '../store';
@@ -25,7 +25,7 @@ export function Gallery() {
           <span className="label" style={{ background: '#111', color: 'var(--accent)', padding: '6px 11px', borderRadius: 999 }}>
             {fits} {fits === 1 ? 'fit' : 'fits'}
           </span>
-          <ThemeToggle />
+          <SettingsButton />
         </div>
       </header>
 

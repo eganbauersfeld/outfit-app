@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
-import { CATEGORIES, COLOR_PRESETS, type Category, type ClothingItem, type WearContext } from '../types';
+import { CATEGORIES, COLOR_PRESETS, lengthOf, MATERIALS, sleeveOf, type BottomLength, type Category, type ClothingItem, type Sleeve, type WearContext } from '../types';
 import { ItemPhoto, Sheet, Switch } from './Common';
 
 /** Downscale a camera photo before it goes into IndexedDB. */
@@ -67,7 +67,16 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
     if (!draft.name.trim()) return setError('Give it a name.');
     setBusy(true);
     try {
-      await saveItem({ ...draft, name: draft.name.trim() }, photo);
+      await saveItem(
+        {
+          ...draft,
+          name: draft.name.trim(),
+          // Lock in sleeves/length (including a name-based guess) and drop fields that don't apply.
+          sleeve: draft.category === 'Top' ? sleeveOf(draft) : undefined,
+          length: draft.category === 'Bottom' ? lengthOf(draft) : undefined,
+        },
+        photo,
+      );
       onClose();
     } catch {
       setError('Couldn’t save — try again.');
@@ -167,6 +176,54 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
         {!isPreset && (
           <input className="input" value={draft.color.name} aria-label="Color name" placeholder="Color name" onChange={(e) => set('color', { ...draft.color, name: e.target.value })} />
         )}
+      </div>
+
+      {draft.category === 'Top' && (
+        <div className="field">
+          <span className="sublabel">Sleeves</span>
+          <div className="seg">
+            {(
+              [
+                ['short', 'Short sleeve'],
+                ['long', 'Long sleeve'],
+                ['sleeveless', 'Sleeveless'],
+              ] as [Sleeve, string][]
+            ).map(([v, label]) => (
+              <button key={v} type="button" className="chip" aria-pressed={sleeveOf(draft) === v} onClick={() => set('sleeve', v)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {draft.category === 'Bottom' && (
+        <div className="field">
+          <span className="sublabel">Length</span>
+          <div className="seg">
+            {(
+              [
+                ['shorts', 'Shorts'],
+                ['long', 'Pants'],
+              ] as [BottomLength, string][]
+            ).map(([v, label]) => (
+              <button key={v} type="button" className="chip" aria-pressed={lengthOf(draft) === v} onClick={() => set('length', v)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="field">
+        <span className="sublabel">Material · optional</span>
+        <div className="seg">
+          {MATERIALS.map((m) => (
+            <button key={m} type="button" className="chip" aria-pressed={draft.material === m} onClick={() => set('material', draft.material === m ? undefined : m)}>
+              {m}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="field">

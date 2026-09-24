@@ -3,7 +3,8 @@
 Personal outfit log / closet / style-trends PWA ("Editorial Mono" design). Single user, single device, no backend.
 
 - **Stack:** Vite + React + TypeScript, `idb` (IndexedDB) for items, wear logs and photo blobs, Open-Meteo for weather (keyless, device geolocation), hand-rolled SVG chart, `vite-plugin-pwa` for manifest + service worker.
-- **Screens:** Today · Closet · Trends · Gallery (`src/screens/`).
+- **Screens:** Today · Ideas · Closet · Trends · Gallery (`src/screens/`).
+- **Ideas:** a weather-based starter line (`starterFor` in `src/ideas.ts`), then combos on request — from Claude (`src/ai.ts`, `claude-opus-5`, called from the phone with the user's own API key saved in Settings) or from rules when there's no key or the call fails.
 - **Data:** `src/types.ts` (ClothingItem, WearLogEntry), `src/db.ts`, derived stats in `src/stats.ts`, outfit ideas in `src/ideas.ts`.
 
 ## Develop

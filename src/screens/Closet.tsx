@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { textOn } from '../color';
-import { ThemeToggle, usePhotoUrl } from '../components/Common';
+import { SettingsButton, usePhotoUrl } from '../components/Common';
 import { PlusIcon } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
 import { daysSinceWorn, lastWorn } from '../stats';
@@ -49,7 +49,7 @@ export function Closet() {
           </sup>
         </h1>
         <div style={{ display: 'flex', marginRight: -10, paddingBottom: 4 }}>
-          <ThemeToggle />
+          <SettingsButton />
           <button type="button" className="icon-btn" aria-label="Add item" onClick={() => setEditing('new')} style={{ background: 'var(--ink)', color: 'var(--paper)' }}>
             <PlusIcon size={18} />
           </button>

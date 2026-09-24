@@ -234,7 +234,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   max-width: 520px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: var(--paper);
   border-top: 1px solid var(--rule);
   padding-bottom: env(safe-area-inset-bottom);
@@ -245,8 +245,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 11px;
-  letter-spacing: 0.14em;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }

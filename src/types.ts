@@ -27,6 +27,30 @@ export interface ClothingItem {
   isSafeBet: boolean;
   isThrifted: boolean;
   contexts: WearContext[];
+  /** Tops only. Older items may lack it; see sleeveOf(). */
+  sleeve?: Sleeve;
+  /** Bottoms only. Older items may lack it; see lengthOf(). */
+  length?: BottomLength;
+  material?: Material;
+}
+
+export type Sleeve = 'short' | 'long' | 'sleeveless';
+export type BottomLength = 'shorts' | 'long';
+export type Material = 'Cotton' | 'Linen' | 'Denim' | 'Wool' | 'Knit' | 'Fleece' | 'Flannel' | 'Synthetic' | 'Leather' | 'Silk';
+export const MATERIALS: Material[] = ['Cotton', 'Linen', 'Denim', 'Wool', 'Knit', 'Fleece', 'Flannel', 'Synthetic', 'Leather', 'Silk'];
+
+// Items added before these fields existed get a best guess from their name.
+export function sleeveOf(item: ClothingItem): Sleeve {
+  if (item.sleeve) return item.sleeve;
+  const n = item.name.toLowerCase();
+  if (/tank|sleeveless|vest/.test(n)) return 'sleeveless';
+  if (/long.?sleeve|\bls\b|flannel|oxford|button|shirt jacket|sweater|hoodie|crewneck|cardigan|turtleneck|henley|rugby/.test(n)) return 'long';
+  return 'short';
+}
+
+export function lengthOf(item: ClothingItem): BottomLength {
+  if (item.length) return item.length;
+  return /short/.test(item.name.toLowerCase()) ? 'shorts' : 'long';
 }
 
 export interface WearLogEntry {

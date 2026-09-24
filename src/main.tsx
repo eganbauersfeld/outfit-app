@@ -1,7 +1,10 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Closet } from './screens/Closet';
+import { LocationSheet } from './components/LocationSheet';
+import { SettingsSheet } from './components/SettingsSheet';
 import { Gallery } from './screens/Gallery';
+import { Ideas } from './screens/Ideas';
 import { Today } from './screens/Today';
 import { Trends } from './screens/Trends';
 import { SettingsProvider, StoreProvider } from './store';
@@ -12,6 +15,7 @@ document.addEventListener('touchstart', () => {}, { passive: true });
 
 const TABS = [
   { id: 'today', label: 'Today', Screen: Today },
+  { id: 'ideas', label: 'Ideas', Screen: Ideas },
   { id: 'closet', label: 'Closet', Screen: Closet },
   { id: 'trends', label: 'Trends', Screen: Trends },
   { id: 'gallery', label: 'Gallery', Screen: Gallery },
@@ -31,6 +35,19 @@ function App() {
     return () => removeEventListener('hashchange', onHash);
   }, []);
   const { Screen } = TABS.find((t) => t.id === tab)!;
+
+  // Settings and the location picker open from any screen (see openSettings/openLocation).
+  const [sheet, setSheet] = useState<'settings' | 'location' | null>(null);
+  useEffect(() => {
+    const s = () => setSheet('settings');
+    const l = () => setSheet('location');
+    addEventListener('outfit:open-settings', s);
+    addEventListener('outfit:open-location', l);
+    return () => {
+      removeEventListener('outfit:open-settings', s);
+      removeEventListener('outfit:open-location', l);
+    };
+  }, []);
 
   return (
     <div className="app">
@@ -53,6 +70,8 @@ function App() {
           </button>
         ))}
       </nav>
+      {sheet === 'settings' && <SettingsSheet onClose={() => setSheet(null)} onPickLocation={() => setSheet('location')} />}
+      {sheet === 'location' && <LocationSheet onClose={() => setSheet(null)} />}
     </div>
   );
 }

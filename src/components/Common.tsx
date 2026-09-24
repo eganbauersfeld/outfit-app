@@ -1,13 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { getPhoto } from '../db';
-import { useSettings } from '../store';
-import { MoonIcon, PhotoPlaceholder, SunIcon } from './Icons';
+import { GearIcon, PhotoPlaceholder } from './Icons';
 
-export function ThemeToggle() {
-  const { theme, toggleTheme } = useSettings();
+// Settings and the location picker live at app level; any screen can open them.
+export const openSettings = () => dispatchEvent(new Event('outfit:open-settings'));
+export const openLocation = () => dispatchEvent(new Event('outfit:open-location'));
+
+export function SettingsButton() {
   return (
-    <button type="button" className="icon-btn" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleTheme}>
-      {theme === 'dark' ? <SunIcon size={18} /> : <MoonIcon size={17} />}
+    <button type="button" className="icon-btn" aria-label="Settings" onClick={openSettings}>
+      <GearIcon size={17} />
     </button>
   );
 }

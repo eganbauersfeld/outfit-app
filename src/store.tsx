@@ -12,6 +12,7 @@ interface Store {
   saveItem: (item: ClothingItem, photo?: Blob | null) => Promise<void>;
   removeItem: (item: ClothingItem) => Promise<void>;
   toggleLogged: (date: string, itemId: string) => Promise<void>;
+  logOutfit: (date: string, itemIds: string[]) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -82,11 +83,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [logs],
   );
 
+  // "Wear this" from Ideas: the day's log becomes exactly this outfit.
+  const logOutfit = useCallback(async (date: string, itemIds: string[]) => {
+    const entry: WearLogEntry = { id: `log-${date}`, date, itemIds, source: 'suggested' };
+    await db.putLog(entry);
+    setLogs((prev) => [...prev.filter((l) => l.id !== entry.id), entry]);
+  }, []);
+
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   const value = useMemo(
-    () => ({ ready, items, logs, itemsById, saveItem, removeItem, toggleLogged, reload }),
-    [ready, items, logs, itemsById, saveItem, removeItem, toggleLogged, reload],
+    () => ({ ready, items, logs, itemsById, saveItem, removeItem, toggleLogged, logOutfit, reload }),
+    [ready, items, logs, itemsById, saveItem, removeItem, toggleLogged, logOutfit, reload],
   );
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }
@@ -100,12 +108,14 @@ export function useStore() {
 // ---------- App-wide settings (theme, accent, closet columns) ----------
 
 export type Theme = 'light' | 'dark';
+export type ThemePref = Theme | 'system';
 export type Accent = 'yellow' | 'red' | 'ink';
 const ACCENTS: Accent[] = ['yellow', 'red', 'ink'];
 
 interface Settings {
   theme: Theme;
-  toggleTheme: () => void;
+  themePref: ThemePref;
+  setThemePref: (t: ThemePref) => void;
   accent: Accent;
   setAccent: (a: Accent) => void;
   columns: 3 | 4;
@@ -130,7 +140,18 @@ function write(key: string, value: string) {
 }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || 'light');
+  const [themePref, setThemePrefState] = useState<ThemePref>(() => {
+    const saved = read('outfit.theme');
+    return saved === 'light' || saved === 'dark' ? saved : 'system';
+  });
+  const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  useEffect(() => {
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const on = () => setSystemDark(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  const theme: Theme = themePref === 'system' ? (systemDark ? 'dark' : 'light') : themePref;
   const [accent, setAccentState] = useState<Accent>(() => {
     const saved = read('outfit.accent') as Accent;
     return ACCENTS.includes(saved) ? saved : 'yellow';
@@ -148,12 +169,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Settings>(
     () => ({
       theme,
-      toggleTheme: () =>
-        setTheme((t) => {
-          const next = t === 'dark' ? 'light' : 'dark';
-          write('outfit.theme', next);
-          return next;
-        }),
+      themePref,
+      setThemePref: (t) => {
+        write('outfit.theme', t);
+        setThemePrefState(t);
+      },
       accent,
       setAccent: (a) => {
         write('outfit.accent', a);
@@ -165,7 +185,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setColumnsState(c);
       },
     }),
-    [theme, accent, columns],
+    [theme, themePref, accent, columns],
   );
   return <SettingsCtx.Provider value={value}>{children}</SettingsCtx.Provider>;
 }

@@ -10,6 +10,7 @@
     "icons": "pwa-assets-generator --preset minimal-2023 public/icon.svg"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "idb": "^8.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { textOn } from '../color';
-import { idx, ThemeToggle, usePhotoUrl } from '../components/Common';
-import { GearIcon, WeatherGlyph } from '../components/Icons';
+import { idx, openLocation, SettingsButton, usePhotoUrl } from '../components/Common';
+import { WeatherGlyph } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
-import { LocationSheet } from '../components/LocationSheet';
 import { LogPicker } from '../components/LogPicker';
-import { SettingsSheet } from '../components/SettingsSheet';
 import { todayKey } from '../dates';
-import { generateIdeas, type IdeasResult } from '../ideas';
+import { starterFor } from '../ideas';
 import { quoteOfTheDay } from '../quotes';
 import { dayStreak, thriftedPct } from '../stats';
 import { useStore } from '../store';
@@ -17,13 +15,10 @@ import { useWeather } from '../weather';
 const TILE_LABEL: Record<Category, string> = { Top: 'Top', Bottom: 'Bottom', Outerwear: 'Outerwear', Shoes: 'Shoes', Sunglasses: 'Shades', Misc: 'Misc.' };
 
 export function Today() {
-  const { items, logs, itemsById } = useStore();
+  const { logs, itemsById } = useStore();
   const { status, weather, error, needsLocation, denied, refresh } = useWeather();
-  const [locationOpen, setLocationOpen] = useState(false);
-  const [ideas, setIdeas] = useState<IdeasResult | null>(null);
   const [picker, setPicker] = useState<Category | null>(null);
   const [newIn, setNewIn] = useState<Category | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const quoteBox = useRef<HTMLDivElement>(null);
   const quoteCard = useRef<HTMLElement>(null);
   const [quoteFits, setQuoteFits] = useState(true);
@@ -45,6 +40,7 @@ export function Today() {
   const streak = useMemo(() => dayStreak(logs, today), [logs, today]);
   const thrifted = useMemo(() => thriftedPct(logs, itemsById), [logs, itemsById]);
   const quote = quoteOfTheDay();
+  const starter = starterFor(weather);
   const now = new Date();
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   const monthDay = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -59,15 +55,12 @@ export function Today() {
             {weekday} <span className="muted">/ {monthDay}</span>
           </span>
           <div style={{ display: 'flex', marginRight: -10 }}>
-            <button type="button" className="icon-btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
-              <GearIcon size={17} />
-            </button>
-            <ThemeToggle />
+            <SettingsButton />
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: ideas ? '8px 0 8px' : '10px 0 12px' }}>
-          <div className={weather ? 'display' : 'display muted'} style={{ fontSize: ideas ? 76 : 'clamp(96px, 30vw, 128px)', marginLeft: -4, transition: 'font-size 180ms ease' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: '10px 0 12px' }}>
+          <div className={weather ? 'display' : 'display muted'} style={{ fontSize: 'clamp(96px, 30vw, 128px)', marginLeft: -4 }}>
             {weather ? `${weather.temp}°` : status === 'loading' ? '—' : '?'}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, paddingBottom: 4, textAlign: 'right', minWidth: 0 }}>
@@ -81,7 +74,7 @@ export function Today() {
                   Feels {weather.feelsLike}° · H {weather.high}° · L {weather.low}°
                 </span>
                 {weather.place && (
-                  <button type="button" className="label" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }} onClick={() => setLocationOpen(true)}>
+                  <button type="button" className="label" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }} onClick={openLocation}>
                     {weather.place}
                   </button>
                 )}
@@ -103,7 +96,7 @@ export function Today() {
                 Try again
               </button>
               {needsLocation && (
-                <button type="button" className="text-btn" style={{ color: 'var(--ink)', textDecoration: 'underline', textUnderlineOffset: 3 }} onClick={() => setLocationOpen(true)}>
+                <button type="button" className="text-btn" style={{ color: 'var(--ink)', textDecoration: 'underline', textUnderlineOffset: 3 }} onClick={openLocation}>
                   Pick a city
                 </button>
               )}
@@ -124,34 +117,19 @@ export function Today() {
         </div>
       )}
 
+      {/* The starter: a nudge in plain garment terms. Real combos live on the Ideas tab. */}
       <section style={{ padding: '12px 20px 0' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button type="button" className="primary-btn" onClick={() => setIdeas(generateIdeas(items, logs, weather))}>
-            <span>{ideas ? 'New ideas' : 'Get outfit ideas'}</span>
-            <span style={{ fontWeight: 500, letterSpacing: '0.08em', opacity: 0.6 }}>{ideas ? 'Shuffle ↻' : 'Optional →'}</span>
-          </button>
-          {ideas && (
-            <button type="button" className="primary-btn outline center" aria-label="Hide ideas" style={{ width: 48, flexShrink: 0, padding: 0, fontSize: 18 }} onClick={() => setIdeas(null)}>
-              ×
-            </button>
-          )}
-        </div>
-        {ideas && (
-          <div>
-            {'ideas' in ideas ? (
-              ideas.ideas.map((text, i) => (
-                <div key={text} className="hair-b" style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: 8, padding: '7px 0', alignItems: 'baseline' }}>
-                  <span className="index">{idx(i)}</span>
-                  <span style={{ fontWeight: 600, fontSize: 13.5, lineHeight: 1.25, letterSpacing: '-0.02em' }}>{text}</span>
-                </div>
-              ))
-            ) : (
-              <div className="hair-b" style={{ padding: '10px 0', fontWeight: 600, fontSize: 14, color: 'var(--muted)' }}>
-                Add {ideas.missing.join(' and ')} to your closet — ideas come from your own clothes.
-              </div>
-            )}
-          </div>
-        )}
+        <button type="button" className="primary-btn" style={{ minHeight: 58, alignItems: 'center' }} onClick={() => (location.hash = 'ideas')}>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 5, textTransform: 'none', letterSpacing: 0, minWidth: 0 }}>
+            <span className="label" style={{ opacity: 0.55 }}>
+              Start with
+            </span>
+            <span className="grot" style={{ fontSize: 17, lineHeight: 1.05, letterSpacing: '-0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {starter ? starter.line : 'Outfit ideas'}
+            </span>
+          </span>
+          <span style={{ flexShrink: 0, color: 'var(--accent)' }}>Ideas →</span>
+        </button>
       </section>
 
       <div style={{ padding: '14px 20px 6px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
@@ -205,16 +183,6 @@ export function Today() {
           }}
         />
       )}
-      {settingsOpen && (
-        <SettingsSheet
-          onClose={() => setSettingsOpen(false)}
-          onPickLocation={() => {
-            setSettingsOpen(false);
-            setLocationOpen(true);
-          }}
-        />
-      )}
-      {locationOpen && <LocationSheet onClose={() => setLocationOpen(false)} />}
     </div>
   );
 }
