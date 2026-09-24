@@ -7,6 +7,9 @@ import { Trends } from './screens/Trends';
 import { SettingsProvider, StoreProvider } from './store';
 import './styles.css';
 
+// iOS Safari only applies :active (the press feedback) once the page listens for touches.
+document.addEventListener('touchstart', () => {}, { passive: true });
+
 const TABS = [
   { id: 'today', label: 'Today', Screen: Today },
   { id: 'closet', label: 'Closet', Screen: Closet },

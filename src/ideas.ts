@@ -1,10 +1,14 @@
-import { daysSinceWorn, lastWorn } from './stats';
-import type { ClothingItem, WearLogEntry } from './types';
+import { addDays, daysBetween, todayKey } from './dates';
+import { lastWorn } from './stats';
+import type { Category, ClothingItem, WearLogEntry } from './types';
 import type { Weather } from './weather';
 
-// Short idea lines, not a prescribed outfit. Built from his own closet when possible.
+// 2–3 short combos built from his own closet — ideas, not a prescribed outfit.
 
-function pickWeighted<T>(list: T[], weight: (t: T) => number): T | undefined {
+export type IdeasResult = { ideas: string[] } | { missing: string[] };
+
+/** Weighted random pick; weight = freshness. */
+function pickWeighted<T>(list: T[], weight: (t: T) => number): T {
   const total = list.reduce((s, t) => s + weight(t), 0);
   let r = Math.random() * total;
   for (const t of list) {
@@ -14,52 +18,67 @@ function pickWeighted<T>(list: T[], weight: (t: T) => number): T | undefined {
   return list[list.length - 1];
 }
 
-function genericIdeas(w: Weather | null): string[] {
-  const high = w?.high ?? 70;
-  if (w?.wet) return ['Jeans + a hoodie, shell on top', 'Something dark that hides the rain', 'Boots or shoes you don’t mind soaking'];
-  if (high >= 80) return ['Shorts + tee, keep it light', 'Loose button-up, sleeves rolled', 'Sunglasses — it’s bright out'];
-  if (high < 60) return ['Jeans + sweater, jacket on top', 'Hoodie under a heavier layer', 'Warm socks, closed shoes'];
-  return ['Shorts + tee, light layer for the walk over', 'Joggers + hoodie, easy laundry-day fit', 'Chinos + button-up, dress it up a touch'];
+function comboKey(ids: string[]) {
+  return [...ids].sort().join('|');
 }
 
-export function generateIdeas(items: ClothingItem[], logs: WearLogEntry[], w: Weather | null): string[] {
-  // Only everyday pieces are fair game; house-only / sports-only stay out of suggestions.
+export function generateIdeas(items: ClothingItem[], logs: WearLogEntry[], w: Weather | null): IdeasResult {
+  const today = todayKey();
+  // House-only / sports-only pieces never get suggested.
   const eligible = items.filter((i) => i.contexts.length === 0 || i.contexts.includes('everyday'));
-  const tops = eligible.filter((i) => i.category === 'Top');
-  const bottoms = eligible.filter((i) => i.category === 'Bottom');
-  if (tops.length === 0 || bottoms.length === 0) return genericIdeas(w);
+  const by = (c: Category) => eligible.filter((i) => i.category === c);
 
-  const outer = eligible.filter((i) => i.category === 'Outerwear');
+  const missing = (['Top', 'Bottom'] as Category[]).filter((c) => by(c).length === 0);
+  if (missing.length) return { missing: missing.map((c) => (c === 'Top' ? 'a top' : 'a bottom')) };
+
+  // Weather rules: no outerwear above ~68°F, required below ~50°F, optional in between.
+  const high = w?.high ?? 60;
+  const outerwear: 'skip' | 'optional' | 'required' = high > 68 ? 'skip' : high < 50 || w?.wet ? 'required' : 'optional';
+  const sunny = !!w && (w.icon === 'sun' || w.icon === 'partly') && !w.wet;
+
+  // Freshness: days since last worn (capped), with a boost for safe bets and anything not worn in 14 days.
   const last = lastWorn(logs);
-  const layer = w ? w.high < 65 || w.wet || w.low < 52 : false;
-  // Favor pieces he hasn't reached for lately; safe bets get a small bump.
-  const weight = (i: ClothingItem) => Math.min(daysSinceWorn(i, last), 30) + 3 + (i.isSafeBet ? 6 : 0);
+  const freshness = (i: ClothingItem) => {
+    const since = daysBetween(last.get(i.id) ?? i.dateAdded.slice(0, 10), today);
+    return Math.min(since, 30) + 2 + (i.isSafeBet ? 8 : 0) + (since >= 14 ? 8 : 0);
+  };
+
+  // Exact item sets logged in the last 30 days don't come back as ideas.
+  const cutoff = addDays(today, -30);
+  const recent = new Set(logs.filter((l) => l.date >= cutoff).map((l) => comboKey(l.itemIds)));
 
   const ideas: string[] = [];
+  const seen = new Set<string>();
   const usedTops = new Set<string>();
-  for (let attempt = 0; attempt < 12 && ideas.length < 2; attempt++) {
-    const top = pickWeighted(tops.filter((t) => !usedTops.has(t.id)), weight) ?? tops[0];
-    usedTops.add(top.id);
+  for (let attempt = 0; attempt < 40 && ideas.length < 3; attempt++) {
+    const topsLeft = by('Top').filter((t) => !usedTops.has(t.id));
+    const top = pickWeighted(topsLeft.length ? topsLeft : by('Top'), freshness);
+    const bottoms = by('Bottom');
     // Prefer a bottom in a different color so the combo has some contrast.
-    const pool = bottoms.filter((b) => b.color.name !== top.color.name);
-    const bottom = pickWeighted(pool.length ? pool : bottoms, weight)!;
-    let line = `${top.name} + ${bottom.name}`;
-    if (layer && outer.length) line += `, ${pickWeighted(outer, weight)!.name} over it`;
+    const contrast = bottoms.filter((b) => b.color.name !== top.color.name);
+    const bottom = pickWeighted(contrast.length ? contrast : bottoms, freshness);
+    const shoes = by('Shoes').length ? pickWeighted(by('Shoes'), freshness) : null;
+    const outer =
+      outerwear !== 'skip' && by('Outerwear').length && (outerwear === 'required' || Math.random() < 0.5) ? pickWeighted(by('Outerwear'), freshness) : null;
+    const shades = sunny && by('Sunglasses').length && Math.random() < 0.6 ? pickWeighted(by('Sunglasses'), freshness) : null;
+
+    const set = [top, bottom, shoes, outer, shades].filter((i): i is ClothingItem => !!i);
+    const key = comboKey(set.map((i) => i.id));
+    if (seen.has(key) || recent.has(key)) continue;
+    seen.add(key);
+    usedTops.add(top.id);
+
+    let line = [top, bottom, shoes].filter(Boolean).map((i) => i!.name).join(' + ');
+    if (outer) line += `, ${outer.name} ${outerwear === 'required' ? 'on top' : 'for the walk over'}`;
+    if (shades) line += `, ${shades.name}`;
     ideas.push(line);
-    if (usedTops.size === tops.length) break;
   }
 
-  // Third line: resurface something that's been sitting.
-  const forgotten = eligible
-    .filter((i) => daysSinceWorn(i, last) >= 21 && (i.category !== 'Outerwear' || layer))
-    .sort((a, b) => daysSinceWorn(b, last) - daysSinceWorn(a, last));
-  if (forgotten.length) {
-    const f = forgotten[Math.floor(Math.random() * Math.min(3, forgotten.length))];
-    const weeks = Math.floor(daysSinceWorn(f, last) / 7);
-    ideas.push(`${f.name} hasn’t been out in ${weeks} weeks — bring it back?`);
-  } else if (w?.wet) {
-    ideas.push('Rain on the way — shoes you don’t mind soaking');
+  // A tiny closet can run out of fresh combos; a repeat beats an empty answer.
+  if (ideas.length === 0) {
+    const top = pickWeighted(by('Top'), freshness);
+    const bottom = pickWeighted(by('Bottom'), freshness);
+    ideas.push(`${top.name} + ${bottom.name}`);
   }
-
-  return ideas.slice(0, 3);
+  return { ideas };
 }
