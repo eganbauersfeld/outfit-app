@@ -7,7 +7,7 @@ import { LogPicker } from '../components/LogPicker';
 import { todayKey } from '../dates';
 import { starter as makeStarter } from '../engine/stylist';
 import { quoteOfTheDay } from '../quotes';
-import { dayStreak, thriftedPct } from '../stats';
+import { dayStreak, uniquenessScore } from '../stats';
 import { useStore } from '../store';
 import { CATEGORIES, type Category, type ClothingItem } from '../types';
 import { useWeather } from '../weather';
@@ -38,7 +38,7 @@ export function Today() {
   const today = todayKey();
   const todays = logs.filter((l) => l.date === today).flatMap((l) => l.itemIds.map((id) => itemsById.get(id)).filter((i) => !!i));
   const streak = useMemo(() => dayStreak(logs, today), [logs, today]);
-  const thrifted = useMemo(() => thriftedPct(logs, itemsById), [logs, itemsById]);
+  const unique = useMemo(() => uniquenessScore(logs, itemsById, today), [logs, itemsById, today]);
   const quote = quoteOfTheDay();
   const starter = useMemo(() => makeStarter(weather, items, logs, feedback), [weather, items, logs, feedback]);
   const now = new Date();
@@ -147,7 +147,7 @@ export function Today() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', margin: '10px 20px 0' }} className="rule-b">
         <Stat value={String(streak)} label="Day streak" />
-        <Stat value={thrifted === null ? '—' : `${thrifted}%`} label="Thrifted" divider />
+        <Stat value={unique === null ? '—' : String(unique.value)} label={unique?.scope === 'week' ? 'Unique · 7 days' : 'Unique today'} divider />
       </div>
 
       {/* Lowest priority: takes whatever height is left and hides itself when it doesn't fit. */}

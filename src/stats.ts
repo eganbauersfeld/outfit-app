@@ -27,19 +27,44 @@ export function dayStreak(logs: WearLogEntry[], today = todayKey()): number {
   return n;
 }
 
-/** Share of logged pieces (every wear counts) that are thrifted. */
-export function thriftedPct(logs: WearLogEntry[], itemsById: Map<string, ClothingItem>): number | null {
-  let total = 0;
-  let thrifted = 0;
-  for (const log of logs) {
-    for (const id of log.itemIds) {
-      const item = itemsById.get(id);
-      if (!item) continue;
-      total++;
-      if (item.isThrifted) thrifted++;
-    }
+// ---------- Uniqueness ----------
+
+// How much each piece defines an outfit: a different top changes the look far more than different shades.
+const DEFINES: Record<Category, number> = { Top: 3, Bottom: 2, Outerwear: 1.5, Shoes: 1, Sunglasses: 0.5, Misc: 0.5 };
+
+/** Weighted overlap of two outfits, 0 (nothing shared) … 1 (identical). */
+export function outfitSimilarity(a: ClothingItem[], b: ClothingItem[]): number {
+  const ids = new Set(b.map((i) => i.id));
+  const w = (i: ClothingItem) => DEFINES[i.category];
+  const shared = a.filter((i) => ids.has(i.id)).reduce((s, i) => s + w(i), 0);
+  const union = [...a, ...b.filter((i) => !a.some((x) => x.id === i.id))].reduce((s, i) => s + w(i), 0);
+  return union ? shared / union : 0;
+}
+
+/** 0–100: how different the outfit worn on `date` is from its closest match in the 60 days before. */
+export function outfitUniqueness(date: string, worn: Map<string, ClothingItem[]>, windowDays = 60): number | null {
+  const outfit = worn.get(date);
+  if (!outfit?.length) return null;
+  const from = addDays(date, -windowDays);
+  let closest = 0;
+  for (const [d, other] of worn) {
+    if (d >= date || d < from || !other.length) continue;
+    closest = Math.max(closest, outfitSimilarity(outfit, other));
   }
-  return total ? Math.round((thrifted / total) * 100) : null;
+  return Math.round((1 - closest) * 100);
+}
+
+/** Today's uniqueness once he's logged, otherwise the average of his last 7 logged days. */
+export function uniquenessScore(logs: WearLogEntry[], itemsById: Map<string, ClothingItem>, today = todayKey()): { value: number; scope: 'today' | 'week' } | null {
+  const worn = wornByDate(logs, itemsById);
+  const todays = outfitUniqueness(today, worn);
+  if (todays !== null) return { value: todays, scope: 'today' };
+  const recent = [...worn.keys()]
+    .filter((d) => d < today && worn.get(d)!.length)
+    .sort()
+    .slice(-7)
+    .map((d) => outfitUniqueness(d, worn)!);
+  return recent.length ? { value: Math.round(recent.reduce((s, v) => s + v, 0) / recent.length), scope: 'week' } : null;
 }
 
 /** itemId -> most recent date worn. */
