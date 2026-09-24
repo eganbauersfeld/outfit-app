@@ -6,6 +6,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 // (a GitHub Pages project subpath, Netlify root, etc.).
 export default defineConfig({
   base: './',
+  // The photo-cutout worker code-splits (the model runtime loads on demand), which needs ES module workers.
+  worker: { format: 'es' },
   plugins: [
     react(),
     VitePWA({
