@@ -6,10 +6,13 @@ import { todayKey } from './dates';
 import { originalPhotoKey, type ClothingItem, type Feedback, type WearLogEntry } from './types';
 import { readCachedWeather } from './weather';
 
-// Studio-photo processing is paused: running the cutout model crashed the app on the phone
-// (almost certainly memory). While paused, nothing is queued or processed, and anything left
-// waiting from before is cleared on load so reopening the app can't set off another crash.
-export const STUDIO_PAUSED = true;
+// Crash guard for studio photos. Before a photo is processed its piece id is written down; it's
+// cleared once the photo is done. If the app dies mid-photo, the note is still there next launch:
+// that photo is marked failed (never retried automatically), and after two such crashes the queue
+// pauses itself until he turns it back on in Settings. So it can never crash-loop.
+const ACTIVE = 'outfit.studioActive';
+const CRASHES = 'outfit.studioCrashes';
+const PAUSED = 'outfit.studioPaused';
 
 // ---------- Closet + wear log ----------
 
@@ -29,6 +32,8 @@ interface Store {
   studio: StudioStatus;
   /** Queue every ordinary photo in the closet for a studio cleanup. */
   cleanUpCloset: () => Promise<void>;
+  /** Turn studio photos back on after the crash guard paused them. */
+  resumeStudio: () => void;
 }
 
 export interface StudioStatus {
@@ -40,6 +45,8 @@ export interface StudioStatus {
   failed: number;
   /** The model couldn't load (usually offline); the queue retries in a minute. */
   stalled: boolean;
+  /** The crash guard stopped processing (the app died mid-photo twice). */
+  paused: boolean;
 }
 
 const StoreCtx = createContext<Store | null>(null);
@@ -49,14 +56,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [logs, setLogs] = useState<WearLogEntry[]>([]);
   const [feedback, setFeedback] = useState<Feedback[]>([]);
+  const [paused, setPaused] = useState(false);
 
   const reload = useCallback(async () => {
     const data = await db.loadAll();
-    if (STUDIO_PAUSED) {
+    const crashedOn = read(ACTIVE);
+    if (crashedOn) {
+      write(ACTIVE, '');
+      const crashes = Number(read(CRASHES) ?? 0) + 1;
+      write(CRASHES, String(crashes));
+      if (crashes >= 2) write(PAUSED, '1');
+      const victim = data.items.find((i) => i.id === crashedOn);
+      if (victim) {
+        victim.photoPending = false;
+        victim.studioFailed = true;
+        await db.putItem(victim);
+      }
+    }
+    if (read(PAUSED) === '1') {
       for (const i of data.items.filter((x) => x.photoPending)) {
         i.photoPending = false;
         await db.putItem(i);
       }
+      setPaused(true);
     }
     setItems(data.items.sort((a, b) => b.dateAdded.localeCompare(a.dateAdded)));
     setLogs(data.logs);
@@ -166,11 +188,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (STUDIO_PAUSED || !ready || !visible || running.current || Date.now() < stalledUntil) return;
+    if (paused || !ready || !visible || running.current || Date.now() < stalledUntil) return;
     const next = items.find((i) => i.photoPending && i.photoId);
     if (!next) return;
     running.current = true;
     setWorking(next.name);
+    write(ACTIVE, next.id);
     (async () => {
       try {
         const original = await db.getPhoto(next.photoId!);
@@ -185,19 +208,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
         setStalledUntil(0);
+        write(CRASHES, '0');
       } catch {
         // The model didn't load (offline, or no space). Leave the piece queued and try again later.
         setStalledUntil(Date.now() + 60_000);
         setTimeout(() => setTick((t) => t + 1), 61_000);
       } finally {
+        write(ACTIVE, '');
         running.current = false;
         setWorking(null);
       }
     })();
-  }, [items, ready, visible, stalledUntil, tick]);
+  }, [items, ready, visible, stalledUntil, tick, paused]);
 
   const cleanUpCloset = useCallback(async () => {
-    if (STUDIO_PAUSED) return;
     const todo = latest.current.items.filter((i) => i.photoId && !i.photoCutout && !i.photoPending);
     for (const i of todo) await db.putItem({ ...i, photoPending: true, studioFailed: false });
     setItems((prev) => prev.map((i) => (todo.some((t) => t.id === i.id) ? { ...i, photoPending: true, studioFailed: false } : i)));
@@ -205,14 +229,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setStalledUntil(0);
   }, []);
 
+  const resumeStudio = useCallback(() => {
+    write(PAUSED, '');
+    write(CRASHES, '0');
+    setPaused(false);
+  }, []);
+
   const studio: StudioStatus = useMemo(
-    () => ({ pending: items.filter((i) => i.photoPending && i.photoId).length, working, failed, stalled: stalledUntil > Date.now() }),
-    [items, working, failed, stalledUntil],
+    () => ({ pending: items.filter((i) => i.photoPending && i.photoId).length, working, failed, stalled: stalledUntil > Date.now(), paused }),
+    [items, working, failed, stalledUntil, paused],
   );
 
   const value = useMemo(
-    () => ({ ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload, studio, cleanUpCloset }),
-    [ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload, studio, cleanUpCloset],
+    () => ({ ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload, studio, cleanUpCloset, resumeStudio }),
+    [ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload, studio, cleanUpCloset, resumeStudio],
   );
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }

@@ -34,13 +34,13 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         runtimeCaching: [
           {
-            // The photo-cutout model and runtime (~56 MB), fetched on first use and then kept for offline.
-            urlPattern: /^https:\/\/staticimgly\.com\/.*/,
+            // The photo-cutout model (4.6 MB) and its WebAssembly runtime: too big to precache,
+            // so they're cached the first time a photo is cleaned up and work offline after that.
+            urlPattern: ({ url }) => /\/models\/.+\.onnx$|\.wasm$/.test(url.pathname),
             handler: 'CacheFirst',
             options: {
               cacheName: 'cutout-model',
-              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 6, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
           {

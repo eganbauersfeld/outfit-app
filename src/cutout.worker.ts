@@ -1,19 +1,13 @@
-// Runs the background-removal model off the main thread so the app stays responsive
-// (inference takes a few seconds on a phone). See cutout.ts for the caller.
-import { removeBackground } from '@imgly/background-removal';
+// Runs the segmentation model off the main thread so the app stays responsive.
+import { runSegmentation } from './segment';
 
-type Request = { id: number; blob: Blob; device: 'gpu' | 'cpu' };
+type Request = { id: number; modelUrl: string; input: Float32Array };
 
 self.onmessage = async (e: MessageEvent<Request>) => {
-  const { id, blob, device } = e.data;
+  const { id, modelUrl, input } = e.data;
   try {
-    const result = await removeBackground(blob, {
-      model: 'isnet_quint8',
-      device,
-      output: { format: 'image/png' },
-      progress: (key, current, total) => self.postMessage({ id, progress: { key, current, total } }),
-    });
-    self.postMessage({ id, result });
+    const mask = await runSegmentation(modelUrl, input);
+    (self as unknown as Worker).postMessage({ id, mask }, [mask.buffer]);
   } catch (err) {
     self.postMessage({ id, error: String(err) });
   }

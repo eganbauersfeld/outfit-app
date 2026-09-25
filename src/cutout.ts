@@ -1,10 +1,10 @@
 // Studio photos: cut the garment out of whatever it was shot on, then trim, center and scale it
 // the same way every time. The result is a transparent PNG; the app draws it on one studio
-// backdrop (see .studio in styles.css), so every piece in the closet and gallery matches.
+// backdrop (STUDIO in components/Common.tsx), so every piece in the closet and gallery matches.
 //
-// Background removal runs on the phone (@imgly/background-removal, ISNet quantized model,
-// ~56 MB fetched once from its CDN and cached by the service worker). Cutouts made with
-// iPhone Photos' "lift subject" already have a transparent background and skip the model.
+// Segmentation runs on the phone with a small model (U²-Net-p, see segment.ts) in a web worker.
+// Cutouts made with iPhone Photos' "lift subject" already have a transparent background and
+// skip the model.
 
 const SIZE = 900; // output square
 const FILL = 0.84; // garment's longest side as a share of the square
@@ -37,27 +37,17 @@ export async function hasTransparentBackground(blob: Blob): Promise<boolean> {
   return clear / (data.length / 4) > 0.08;
 }
 
-/** Downscale before inference: faster, and keeps iPhone memory in check. */
-async function shrink(blob: Blob, max = 1024): Promise<Blob> {
-  const bmp = await loadImage(blob);
-  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
-  if (scale === 1 && blob.type === 'image/jpeg') {
-    bmp.close();
-    return blob;
-  }
-  const c = canvas(Math.round(bmp.width * scale), Math.round(bmp.height * scale));
-  c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
-  bmp.close();
-  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('encode failed'))), 'image/jpeg', 0.92));
-}
-
 /** Trim to the garment, then center it on a transparent square at a consistent size. */
 export async function normalize(cut: Blob): Promise<Blob | null> {
   const bmp = await loadImage(cut);
   const src = canvas(bmp.width, bmp.height);
-  const sctx = src.getContext('2d')!;
-  sctx.drawImage(bmp, 0, 0);
+  src.getContext('2d')!.drawImage(bmp, 0, 0);
   bmp.close();
+  return normalizeCanvas(src);
+}
+
+async function normalizeCanvas(src: HTMLCanvasElement): Promise<Blob | null> {
+  const sctx = src.getContext('2d')!;
   const img = sctx.getImageData(0, 0, src.width, src.height);
   firmUpEdges(img);
   removeSpecks(img);
@@ -194,8 +184,13 @@ function keepMainPiece(img: ImageData) {
 
 // ---------- The model, in a worker when possible ----------
 
-type Device = 'gpu' | 'cpu';
-type Reply = { id: number; progress?: { key: string; current: number; total: number }; result?: Blob; error?: string };
+const MODEL_URL = new URL(`${import.meta.env.BASE_URL}models/u2netp.onnx`, location.href).href;
+const MODEL_SIZE = 320;
+const MEAN = [0.485, 0.456, 0.406];
+const STD = [0.229, 0.224, 0.225];
+const WORK = 1024; // longest side we cut out at
+
+type Reply = { id: number; mask?: Float32Array; error?: string };
 
 let worker: Worker | null | undefined;
 let nextId = 0;
@@ -210,37 +205,37 @@ function getWorker(): Worker | null {
   return worker;
 }
 
-function inWorker(w: Worker, blob: Blob, device: Device, onProgress?: Progress): Promise<Blob> {
+function inWorker(w: Worker, input: Float32Array): Promise<Float32Array> {
   const id = nextId++;
   return new Promise((resolve, reject) => {
+    const done = () => {
+      clearTimeout(timer);
+      w.removeEventListener('message', onMessage);
+      w.removeEventListener('error', onError);
+    };
     const onMessage = (e: MessageEvent<Reply>) => {
       if (e.data.id !== id) return;
-      if (e.data.progress) return reportProgress(e.data.progress, onProgress);
-      w.removeEventListener('message', onMessage);
-      if (e.data.result) resolve(e.data.result);
-      else reject(new Error(e.data.error ?? 'cutout failed'));
+      done();
+      if (e.data.mask) resolve(e.data.mask);
+      else reject(new Error(e.data.error ?? 'segmentation failed'));
     };
+    // A worker that fails to load reports an error event, never a message; don't wait forever.
+    const onError = () => {
+      done();
+      worker = null;
+      w.terminate();
+      reject(new Error('worker failed'));
+    };
+    const timer = setTimeout(onError, 90_000);
     w.addEventListener('message', onMessage);
-    w.postMessage({ id, blob, device });
+    w.addEventListener('error', onError);
+    w.postMessage({ id, modelUrl: MODEL_URL, input });
   });
 }
 
-let mainThread: Promise<typeof import('@imgly/background-removal')> | null = null;
-
-async function onMainThread(blob: Blob, device: Device, onProgress?: Progress): Promise<Blob> {
-  mainThread ??= import('@imgly/background-removal');
-  const { removeBackground } = await mainThread;
-  return removeBackground(blob, {
-    model: 'isnet_quint8',
-    device,
-    output: { format: 'image/png' },
-    progress: (key, current, total) => reportProgress({ key, current, total }, onProgress),
-  });
-}
-
-function reportProgress(p: { key: string; current: number; total: number }, onProgress?: Progress) {
-  if (p.key.startsWith('fetch:')) onProgress?.('Downloading the cutout model (one time, ~56 MB)…', p.total ? p.current / p.total : null);
-  else if (p.key.startsWith('compute')) onProgress?.('Cutting out…', null);
+async function onMainThread(input: Float32Array): Promise<Float32Array> {
+  const { runSegmentation } = await import('./segment');
+  return runSegmentation(MODEL_URL, input);
 }
 
 /** Cut a garment out of a photo. Returns null when it can't find a clear garment. */
@@ -249,26 +244,61 @@ export async function makeCutout(photo: Blob, onProgress?: Progress): Promise<Bl
     onProgress?.('Tidying up your cutout…', null);
     return normalize(photo);
   }
-  onProgress?.('Loading the cutout model…', null);
-  const input = await shrink(photo);
-  // The graphics chip is several times faster where the browser offers it (recent iPhones do).
-  const device: Device = 'gpu' in navigator ? 'gpu' : 'cpu';
-  const attempts: (() => Promise<Blob>)[] = [];
-  const w = getWorker();
-  if (w) attempts.push(() => inWorker(w, input, device, onProgress));
-  attempts.push(() => onMainThread(input, device, onProgress));
-  if (device === 'gpu') attempts.push(() => onMainThread(input, 'cpu', onProgress));
-  let cut: Blob | null = null;
-  let lastError: unknown;
-  for (const attempt of attempts) {
-    try {
-      cut = await attempt();
-      break;
-    } catch (e) {
-      lastError = e;
-    }
+  onProgress?.('Cutting out…', null);
+
+  // The photo at working size (its pixels get the mask as alpha) …
+  const bmp = await loadImage(photo);
+  const scale = Math.min(1, WORK / Math.max(bmp.width, bmp.height));
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
+  const full = canvas(w, h);
+  const fctx = full.getContext('2d')!;
+  fctx.drawImage(bmp, 0, 0, w, h);
+
+  // … and squeezed to the model's 320×320, normalized, in NCHW order.
+  const small = canvas(MODEL_SIZE, MODEL_SIZE);
+  const sctx = small.getContext('2d')!;
+  sctx.drawImage(bmp, 0, 0, MODEL_SIZE, MODEL_SIZE);
+  bmp.close();
+  const px = sctx.getImageData(0, 0, MODEL_SIZE, MODEL_SIZE).data;
+  const plane = MODEL_SIZE * MODEL_SIZE;
+  const input = new Float32Array(3 * plane);
+  for (let i = 0; i < plane; i++)
+    for (let c = 0; c < 3; c++) input[c * plane + i] = (px[i * 4 + c] / 255 - MEAN[c]) / STD[c];
+
+  const w8 = getWorker();
+  let mask: Float32Array;
+  try {
+    mask = w8 ? await inWorker(w8, input) : await onMainThread(input);
+  } catch {
+    mask = await onMainThread(input);
   }
-  if (!cut) throw lastError;
+
+  // Mask → 0–255 (min–max, as the model's output isn't calibrated), scaled up smoothly to the photo.
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const v of mask) {
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  const range = hi - lo || 1;
+  const m = canvas(MODEL_SIZE, MODEL_SIZE);
+  const mctx = m.getContext('2d')!;
+  const mimg = mctx.createImageData(MODEL_SIZE, MODEL_SIZE);
+  for (let i = 0; i < plane; i++) {
+    const a = Math.round(((mask[i] - lo) / range) * 255);
+    mimg.data[i * 4 + 3] = a;
+  }
+  mctx.putImageData(mimg, 0, 0);
+  const big = canvas(w, h);
+  const bctx = big.getContext('2d')!;
+  bctx.imageSmoothingQuality = 'high';
+  bctx.drawImage(m, 0, 0, w, h);
+  const alpha = bctx.getImageData(0, 0, w, h).data;
+  const img = fctx.getImageData(0, 0, w, h);
+  for (let i = 3; i < img.data.length; i += 4) img.data[i] = alpha[i];
+  fctx.putImageData(img, 0, 0);
+
   onProgress?.('Tidying up…', null);
-  return normalize(cut);
+  return normalizeCanvas(full);
 }

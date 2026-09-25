@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { exportBackup, importBackup } from '../db';
 import { todayKey } from '../dates';
-import { STUDIO_PAUSED, useSettings, useStore, type Accent, type ThemePref } from '../store';
+import { useSettings, useStore, type Accent, type ThemePref } from '../store';
 import { getSavedLocation } from '../weather';
 import { Sheet, Switch } from './Common';
 
@@ -14,7 +14,7 @@ const ACCENTS: { value: Accent; label: string; swatch: string }[] = [
 export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void; onPickLocation: () => void }) {
   const location = getSavedLocation();
   const { accent, setAccent, columns, setColumns, themePref, setThemePref, autoStudio, setAutoStudio } = useSettings();
-  const { reload, items, logs, studio, cleanUpCloset } = useStore();
+  const { reload, items, logs, studio, cleanUpCloset, resumeStudio } = useStore();
   const [msg, setMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const plain = items.filter((i) => i.photoId && !i.photoCutout && !i.photoPending);
@@ -94,14 +94,21 @@ export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void
 
       <div className="field">
         <span className="sublabel">Studio photos</span>
-        {!STUDIO_PAUSED && (
+        {!studio.paused && (
         <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
-          Photos get cut out and placed on the same backdrop in the background while the app is open. The first one downloads a ~56 MB model (use Wi-Fi); after that it
-          works offline. Originals are kept.
+          Photos get cut out and placed on the same backdrop in the background while the app is open — a few seconds each. Works offline. Originals are kept.
         </p>
         )}
-        {STUDIO_PAUSED ? (
-          <p style={{ fontSize: 13, fontWeight: 700, margin: '4px 0 0' }}>Paused for now — it was crashing the app. Studio photos you already have stay as they are.</p>
+        {studio.paused ? (
+          <>
+            <p style={{ fontSize: 13, fontWeight: 700, margin: '4px 0 0', lineHeight: 1.4 }}>
+              Paused — the app closed twice while making a studio photo, so it stopped itself. The photos it was working on were skipped.
+            </p>
+            <button type="button" className="primary-btn outline" style={{ marginTop: 6 }} onClick={resumeStudio}>
+              <span>Turn studio photos back on</span>
+              <span>→</span>
+            </button>
+          </>
         ) : (
           <>
             <Switch label="Clean up new photos automatically" checked={autoStudio} onChange={setAutoStudio} />
