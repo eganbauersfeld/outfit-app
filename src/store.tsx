@@ -6,6 +6,11 @@ import { todayKey } from './dates';
 import { originalPhotoKey, type ClothingItem, type Feedback, type WearLogEntry } from './types';
 import { readCachedWeather } from './weather';
 
+// Studio-photo processing is paused: running the cutout model crashed the app on the phone
+// (almost certainly memory). While paused, nothing is queued or processed, and anything left
+// waiting from before is cleared on load so reopening the app can't set off another crash.
+export const STUDIO_PAUSED = true;
+
 // ---------- Closet + wear log ----------
 
 interface Store {
@@ -47,6 +52,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(async () => {
     const data = await db.loadAll();
+    if (STUDIO_PAUSED) {
+      for (const i of data.items.filter((x) => x.photoPending)) {
+        i.photoPending = false;
+        await db.putItem(i);
+      }
+    }
     setItems(data.items.sort((a, b) => b.dateAdded.localeCompare(a.dateAdded)));
     setLogs(data.logs);
     setFeedback(data.feedback);
@@ -155,7 +166,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!ready || !visible || running.current || Date.now() < stalledUntil) return;
+    if (STUDIO_PAUSED || !ready || !visible || running.current || Date.now() < stalledUntil) return;
     const next = items.find((i) => i.photoPending && i.photoId);
     if (!next) return;
     running.current = true;
@@ -186,6 +197,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [items, ready, visible, stalledUntil, tick]);
 
   const cleanUpCloset = useCallback(async () => {
+    if (STUDIO_PAUSED) return;
     const todo = latest.current.items.filter((i) => i.photoId && !i.photoCutout && !i.photoPending);
     for (const i of todo) await db.putItem({ ...i, photoPending: true, studioFailed: false });
     setItems((prev) => prev.map((i) => (todo.some((t) => t.id === i.id) ? { ...i, photoPending: true, studioFailed: false } : i)));

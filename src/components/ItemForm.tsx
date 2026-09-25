@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { hasTransparentBackground } from '../cutout';
 import { getPhoto } from '../db';
-import { useSettings, useStore } from '../store';
+import { STUDIO_PAUSED, useSettings, useStore } from '../store';
 import { CATEGORIES, COLOR_PRESETS, lengthOf, MATERIALS, originalPhotoKey, sleeveOf, type BottomLength, type Category, type ClothingItem, type Sleeve, type WearContext } from '../types';
 import { ItemPhoto, Sheet, STUDIO, Switch } from './Common';
 
@@ -104,7 +104,7 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
       };
       if (src === null) await saveItem({ ...next, photoCutout: undefined, photoPending: undefined, studioFailed: undefined }, null);
       // A new photo saves right away; the studio version swaps in when the queue gets to it.
-      else if (src) await saveItem({ ...next, photoCutout: false, photoPending: srcIsNew && autoStudio, studioFailed: false }, src);
+      else if (src) await saveItem({ ...next, photoCutout: false, photoPending: srcIsNew && autoStudio && !STUDIO_PAUSED, studioFailed: false }, src);
       // Photo untouched: keep whatever the queue has done to it in the meantime.
       else await saveItem({ ...next, photoId, photoCutout: cutout, photoPending: pending, studioFailed: live?.studioFailed && !draft.photoPending });
       onClose();
@@ -123,8 +123,9 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
   const toggleContext = (c: WearContext) =>
     set('contexts', draft.contexts.includes(c) ? draft.contexts.filter((x) => x !== c) : [...draft.contexts, c]);
 
-  const photoNote =
-    src && srcIsNew
+  const photoNote = STUDIO_PAUSED
+    ? null
+    : src && srcIsNew
       ? autoStudio
         ? 'Saves right away — the studio version swaps in a few seconds later.'
         : 'Auto studio cleanup is off (Settings). Use Clean up closet when you like.'
@@ -159,7 +160,7 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
           <button type="button" className="text-btn" style={{ textAlign: 'left' }} onClick={() => fileRef.current?.click()}>
             {photoId || preview ? 'Change photo' : 'Add photo'}
           </button>
-          {src === undefined && photoId && !cutout && !pending && (
+          {!STUDIO_PAUSED && src === undefined && photoId && !cutout && !pending && (
             <button
               type="button"
               className="text-btn"

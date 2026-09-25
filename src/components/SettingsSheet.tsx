@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { exportBackup, importBackup } from '../db';
 import { todayKey } from '../dates';
-import { useSettings, useStore, type Accent, type ThemePref } from '../store';
+import { STUDIO_PAUSED, useSettings, useStore, type Accent, type ThemePref } from '../store';
 import { getSavedLocation } from '../weather';
 import { Sheet, Switch } from './Common';
 
@@ -94,27 +94,35 @@ export function SettingsSheet({ onClose, onPickLocation }: { onClose: () => void
 
       <div className="field">
         <span className="sublabel">Studio photos</span>
+        {!STUDIO_PAUSED && (
         <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
           Photos get cut out and placed on the same backdrop in the background while the app is open. The first one downloads a ~56 MB model (use Wi-Fi); after that it
           works offline. Originals are kept.
         </p>
-        <Switch label="Clean up new photos automatically" checked={autoStudio} onChange={setAutoStudio} />
-        {studio.pending > 0 ? (
-          <p style={{ fontSize: 13, fontWeight: 700, margin: '4px 0 0' }}>
-            {studio.stalled ? 'Waiting for a connection to load the model — ' : 'Cleaning up — '}
-            {studio.pending} left{studio.working ? <span className="muted"> · {studio.working}</span> : null}
-          </p>
-        ) : (
-          studio.failed > 0 && (
-            <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: '4px 0 0' }}>
-              {studio.failed} {studio.failed === 1 ? 'photo' : 'photos'} kept as they were (no clear garment found).
-            </p>
-          )
         )}
-        <button type="button" className="primary-btn" style={{ marginTop: 6 }} disabled={!plain.length} onClick={cleanUpCloset}>
-          <span>{plain.length ? `Clean up closet (${plain.length} ${plain.length === 1 ? 'photo' : 'photos'})` : 'All photos are studio photos'}</span>
-          <span>→</span>
-        </button>
+        {STUDIO_PAUSED ? (
+          <p style={{ fontSize: 13, fontWeight: 700, margin: '4px 0 0' }}>Paused for now — it was crashing the app. Studio photos you already have stay as they are.</p>
+        ) : (
+          <>
+            <Switch label="Clean up new photos automatically" checked={autoStudio} onChange={setAutoStudio} />
+            {studio.pending > 0 ? (
+              <p style={{ fontSize: 13, fontWeight: 700, margin: '4px 0 0' }}>
+                {studio.stalled ? 'Waiting for a connection to load the model — ' : 'Cleaning up — '}
+                {studio.pending} left{studio.working ? <span className="muted"> · {studio.working}</span> : null}
+              </p>
+            ) : (
+              studio.failed > 0 && (
+                <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: '4px 0 0' }}>
+                  {studio.failed} {studio.failed === 1 ? 'photo' : 'photos'} kept as they were (no clear garment found).
+                </p>
+              )
+            )}
+            <button type="button" className="primary-btn" style={{ marginTop: 6 }} disabled={!plain.length} onClick={cleanUpCloset}>
+              <span>{plain.length ? `Clean up closet (${plain.length} ${plain.length === 1 ? 'photo' : 'photos'})` : 'All photos are studio photos'}</span>
+              <span>→</span>
+            </button>
+          </>
+        )}
       </div>
 
       <div className="field">
