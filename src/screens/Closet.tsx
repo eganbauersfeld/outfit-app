@@ -4,7 +4,7 @@ import { PlusIcon } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
 import { daysSinceWorn, lastWorn } from '../stats';
 import { useSettings, useStore } from '../store';
-import { CATEGORIES, CATEGORY_PLURAL, type Category, type ClothingItem } from '../types';
+import { CATEGORIES, CATEGORY_PLURAL, type Category, type ClothingItem, type Side } from '../types';
 
 type Filter = 'favorites' | 'safe' | 'stale';
 const FILTERS: { value: Filter; label: string }[] = [
@@ -113,32 +113,58 @@ export function Closet() {
 
 /** Photo if there is one; otherwise the piece's own color, with its name set on it like a record sleeve. */
 function Tile({ item, small, onClick }: { item: ClothingItem; small: boolean; onClick: () => void }) {
-  const { bg, fg } = useLook(item);
+  const [side, setSide] = useState<Side>('front');
+  const shown: Side = item.back ? side : 'front';
+  const { bg, fg } = useLook(item, shown);
   return (
-    <button type="button" onClick={onClick} aria-label={item.name} style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', background: bg, color: fg, display: 'block', minWidth: 0 }}>
-      <PieceImage item={item} label shade="both" />
-      <span style={{ position: 'absolute', top: 7, left: 8, right: 8, display: 'flex', justifyContent: 'space-between' }}>
-        <span className="tag" style={{ opacity: 0.8 }}>
-          {small ? item.color.name.slice(0, 3) : item.color.name}
-        </span>
-        <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-          {item.photoPending && !item.photoCutout && (
-            <span className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5, borderColor: 'rgba(127,127,127,0.35)', borderTopColor: 'currentColor' }} aria-label="Making studio photo" />
-          )}
-          {item.isFavorite && <span style={{ width: 7, height: 7, background: 'var(--accent)', boxShadow: '0 0 0 1px rgba(0,0,0,0.25)' }} aria-label="Favorite" />}
-        </span>
-      </span>
-      <span style={{ position: 'absolute', left: 8, right: 8, bottom: 7, textAlign: 'left' }}>
-        <span className="grot" style={{ display: 'block', fontSize: small ? 12 : 15, lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {item.name}
-        </span>
-        {!small && (
-          <span className="tag" style={{ marginTop: 4, opacity: 0.75 }}>
-            {item.styleType}
-            {item.isThrifted ? ' · Thrifted' : ''}
+    <div style={{ position: 'relative', minWidth: 0 }}>
+      <button type="button" onClick={onClick} aria-label={item.name} style={{ position: 'relative', aspectRatio: '1', width: '100%', overflow: 'hidden', background: bg, color: fg, display: 'block' }}>
+        <PieceImage item={item} label shade="both" side={shown} />
+        <span style={{ position: 'absolute', top: 7, left: 8, right: 8, display: 'flex', justifyContent: 'space-between' }}>
+          <span className="tag" style={{ opacity: 0.8 }}>
+            {small ? item.color.name.slice(0, 3) : item.color.name}
           </span>
-        )}
-      </span>
-    </button>
+          <span style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            {((item.photoPending && !item.photoCutout) || item.back?.pending) && (
+              <span className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5, borderColor: 'rgba(127,127,127,0.35)', borderTopColor: 'currentColor' }} aria-label="Making studio photo" />
+            )}
+            {item.isFavorite && <span style={{ width: 7, height: 7, background: 'var(--accent)', boxShadow: '0 0 0 1px rgba(0,0,0,0.25)' }} aria-label="Favorite" />}
+          </span>
+        </span>
+        <span style={{ position: 'absolute', left: 8, right: item.back ? 30 : 8, bottom: 7, textAlign: 'left' }}>
+          <span className="grot" style={{ display: 'block', fontSize: small ? 12 : 15, lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {item.name}
+          </span>
+          {!small && (
+            <span className="tag" style={{ marginTop: 4, opacity: 0.75 }}>
+              {shown === 'back' ? 'Back' : item.styleType}
+              {shown === 'front' && item.isThrifted ? ' · Thrifted' : ''}
+            </span>
+          )}
+        </span>
+      </button>
+      {item.back && (
+        // Sits beside the tile's button (not inside it) so flipping doesn't open the editor.
+        <button
+          type="button"
+          onClick={() => setSide(shown === 'front' ? 'back' : 'front')}
+          aria-label={shown === 'front' ? `Show the back of ${item.name}` : `Show the front of ${item.name}`}
+          aria-pressed={shown === 'back'}
+          style={{ position: 'absolute', right: 0, bottom: 0, width: 34, height: 34, display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: 6, color: fg }}
+        >
+          <FlipBadge back={shown === 'back'} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Two stacked squares; the front one is filled on the side being shown. */
+function FlipBadge({ back }: { back: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.25))' }}>
+      <rect x="1.5" y="4.5" width="10" height="12" rx="1" fill={back ? 'none' : 'currentColor'} stroke="currentColor" strokeWidth="1.4" />
+      <rect x="6.5" y="1.5" width="10" height="12" rx="1" fill={back ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" />
+    </svg>
   );
 }

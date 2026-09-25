@@ -29,6 +29,9 @@ export interface ClothingItem {
   photoPending?: boolean;
   /** The studio cleanup couldn't find a clear garment in this photo; don't retry it automatically. */
   studioFailed?: boolean;
+  /** Optional second photo for pieces with something on the back (a graphic tee printed on both sides).
+   *  Same studio treatment as the front; the front stays the piece's main image everywhere. */
+  back?: BackPhoto;
   dateAdded: string;
   isFavorite: boolean;
   isSafeBet: boolean;
@@ -42,6 +45,15 @@ export interface ClothingItem {
 }
 
 export const originalPhotoKey = (photoId: string) => `orig-${photoId}`;
+
+export interface BackPhoto {
+  photoId: string;
+  cutout?: boolean;
+  pending?: boolean;
+  failed?: boolean;
+}
+
+export type Side = 'front' | 'back';
 
 export type Sleeve = 'short' | 'long' | 'sleeveless';
 export type BottomLength = 'shorts' | 'long';

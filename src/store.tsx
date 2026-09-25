@@ -77,14 +77,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (crashes >= 2) write(PAUSED, '1');
       const victim = data.items.find((i) => i.id === crashedOn);
       if (victim) {
-        victim.photoPending = false;
-        victim.studioFailed = true;
+        if (victim.photoPending) {
+          victim.photoPending = false;
+          victim.studioFailed = true;
+        } else if (victim.back) victim.back = { ...victim.back, pending: false, failed: true };
         await db.putItem(victim);
       }
     }
     if (read(PAUSED) === '1') {
-      for (const i of data.items.filter((x) => x.photoPending)) {
+      for (const i of data.items.filter((x) => x.photoPending || x.back?.pending)) {
         i.photoPending = false;
+        if (i.back) i.back = { ...i.back, pending: false };
         await db.putItem(i);
       }
       setPaused(true);
@@ -228,18 +231,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (paused || !ready || !visible || running.current || Date.now() < stalledUntil) return;
-    const next = items.find((i) => i.photoPending && i.photoId);
+    const next = items.find((i) => (i.photoPending && i.photoId) || i.back?.pending);
     if (!next) return;
+    // Fronts first; a piece's back photo goes through the same queue after it.
+    const front = !!(next.photoPending && next.photoId);
+    const srcId = front ? next.photoId! : next.back!.photoId;
     running.current = true;
     setWorking(next.name);
     write(ACTIVE, next.id);
     (async () => {
       try {
-        const original = await db.getPhoto(next.photoId!);
+        const original = await db.getPhoto(srcId);
         const cut = original ? await makeCutout(original) : null;
         // Only apply the result if the piece still has the photo we started with.
         const now = latest.current.items.find((i) => i.id === next.id);
-        if (now && now.photoId === next.photoId) {
+        if (!front) {
+          if (now?.back?.photoId === srcId) {
+            if (cut && original) {
+              const photoId = `photo-${now.id}-back-${Date.now()}`;
+              await db.putPhoto(photoId, cut);
+              await db.putPhoto(originalPhotoKey(photoId), original);
+              await latest.current.saveItem({ ...now, back: { photoId, cutout: true } });
+              await db.deletePhoto(srcId);
+            } else {
+              await latest.current.saveItem({ ...now, back: { ...now.back, pending: false, failed: true } });
+              setFailed((f) => f + 1);
+            }
+          }
+        } else if (now && now.photoId === next.photoId) {
           if (cut && original) await latest.current.saveItem({ ...now, photoPending: false, photoCutout: true, studioFailed: false }, cut, original);
           else {
             await latest.current.saveItem({ ...now, photoPending: false, studioFailed: true });
@@ -261,9 +280,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [items, ready, visible, stalledUntil, tick, paused]);
 
   const cleanUpCloset = useCallback(async () => {
-    const todo = latest.current.items.filter((i) => i.photoId && !i.photoCutout && !i.photoPending);
-    for (const i of todo) await db.putItem({ ...i, photoPending: true, studioFailed: false });
-    setItems((prev) => prev.map((i) => (todo.some((t) => t.id === i.id) ? { ...i, photoPending: true, studioFailed: false } : i)));
+    const frontTodo = (i: ClothingItem) => !!i.photoId && !i.photoCutout && !i.photoPending;
+    const backTodo = (i: ClothingItem) => !!i.back && !i.back.cutout && !i.back.pending;
+    const queued = (i: ClothingItem): ClothingItem => ({
+      ...i,
+      ...(frontTodo(i) ? { photoPending: true, studioFailed: false } : {}),
+      ...(backTodo(i) ? { back: { ...i.back!, pending: true, failed: false } } : {}),
+    });
+    const todo = latest.current.items.filter((i) => frontTodo(i) || backTodo(i));
+    for (const i of todo) await db.putItem(queued(i));
+    setItems((prev) => prev.map((i) => (todo.some((t) => t.id === i.id) ? queued(i) : i)));
     setFailed(0);
     setStalledUntil(0);
   }, []);
@@ -275,7 +301,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const studio: StudioStatus = useMemo(
-    () => ({ pending: items.filter((i) => i.photoPending && i.photoId).length, working, failed, stalled: stalledUntil > Date.now(), paused }),
+    () => ({ pending: items.filter((i) => i.photoPending && i.photoId).length + items.filter((i) => i.back?.pending).length, working, failed, stalled: stalledUntil > Date.now(), paused }),
     [items, working, failed, stalledUntil, paused],
   );
 

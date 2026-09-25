@@ -42,6 +42,10 @@ export async function deleteItem(item: ClothingItem) {
     await tx.objectStore('photos').delete(item.photoId);
     await tx.objectStore('photos').delete(originalPhotoKey(item.photoId));
   }
+  if (item.back) {
+    await tx.objectStore('photos').delete(item.back.photoId);
+    await tx.objectStore('photos').delete(originalPhotoKey(item.back.photoId));
+  }
   await tx.done;
 }
 

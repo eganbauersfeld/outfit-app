@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { hasTransparentBackground } from '../cutout';
-import { getPhoto } from '../db';
+import { deletePhoto, getPhoto, putPhoto } from '../db';
 import { useSettings, useStore } from '../store';
-import { CATEGORIES, COLOR_PRESETS, lengthOf, MATERIALS, originalPhotoKey, sleeveOf, type BottomLength, type Category, type ClothingItem, type Sleeve, type WearContext } from '../types';
+import { CATEGORIES, COLOR_PRESETS, lengthOf, MATERIALS, originalPhotoKey, sleeveOf, type BackPhoto, type BottomLength, type Category, type ClothingItem, type Side, type Sleeve, type WearContext } from '../types';
 import { ItemPhoto, Sheet, STUDIO, Switch } from './Common';
 
 /** Downscale a camera photo before it goes into IndexedDB (keeping transparency for iPhone cutouts). */
@@ -61,6 +61,20 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
   const pending = (live?.photoPending || draft.photoPending) && !cutout;
   const beingWorkedOn = pending && studio.working === (live ?? draft).name;
 
+  // The optional back photo, edited the same way: undefined = unchanged, null = removed.
+  const [side, setSide] = useState<Side>('front');
+  const [backSrc, setBackSrc] = useState<Blob | null | undefined>(undefined);
+  const [backPreview, setBackPreview] = useState<string | null>(null);
+  const back = live ? live.back : draft.back;
+  const backPending = !!(back?.pending || draft.back?.pending) && !back?.cutout;
+  const backWorkedOn = backPending && !pending && studio.working === (live ?? draft).name;
+  useEffect(() => {
+    if (!backSrc) return setBackPreview(null);
+    const u = URL.createObjectURL(backSrc);
+    setBackPreview(u);
+    return () => URL.revokeObjectURL(u);
+  }, [backSrc]);
+
   useEffect(() => {
     if (!src) return setPreview(null);
     const u = URL.createObjectURL(src);
@@ -83,8 +97,12 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
     e.target.value = '';
     if (!file) return;
     try {
-      setSrc(await resizeImage(file));
-      setSrcIsNew(true);
+      const blob = await resizeImage(file);
+      if (side === 'back') setBackSrc(blob);
+      else {
+        setSrc(blob);
+        setSrcIsNew(true);
+      }
       setError(null);
     } catch {
       setError('Couldn’t read that photo.');
@@ -102,11 +120,23 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
         sleeve: draft.category === 'Top' ? sleeveOf(draft) : undefined,
         length: draft.category === 'Bottom' ? lengthOf(draft) : undefined,
       };
+      let newBack: BackPhoto | undefined = back && { ...back, pending: backPending || undefined, failed: backPending ? false : back.failed };
+      if (backSrc === null) newBack = undefined;
+      else if (backSrc) {
+        newBack = { photoId: `photo-${draft.id}-back-${Date.now()}`, pending: (autoStudio && !studio.paused) || undefined };
+        await putPhoto(newBack.photoId, backSrc);
+      }
+      next.back = newBack;
       if (src === null) await saveItem({ ...next, photoCutout: undefined, photoPending: undefined, studioFailed: undefined }, null);
       // A new photo saves right away; the studio version swaps in when the queue gets to it.
       else if (src) await saveItem({ ...next, photoCutout: false, photoPending: srcIsNew && autoStudio && !studio.paused, studioFailed: false }, src);
       // Photo untouched: keep whatever the queue has done to it in the meantime.
       else await saveItem({ ...next, photoId, photoCutout: cutout, photoPending: pending, studioFailed: live?.studioFailed && !draft.photoPending });
+      // The back photo it replaced (and that one's original) can go once the piece is saved.
+      if (backSrc !== undefined && back) {
+        await deletePhoto(back.photoId);
+        await deletePhoto(originalPhotoKey(back.photoId));
+      }
       onClose();
     } catch {
       setError('Couldn’t save — try again.');
@@ -123,8 +153,25 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
   const toggleContext = (c: WearContext) =>
     set('contexts', draft.contexts.includes(c) ? draft.contexts.filter((x) => x !== c) : [...draft.contexts, c]);
 
+  const backNote =
+    backSrc
+      ? autoStudio && !studio.paused
+        ? 'The back gets the same studio cleanup after you save.'
+        : null
+      : backSrc === undefined && backWorkedOn
+        ? 'Cleaning up the back photo now…'
+        : backSrc === undefined && backPending
+          ? 'Back photo queued for a studio cleanup.'
+          : backSrc === undefined && back?.failed
+            ? 'Couldn’t pick out the piece in the back photo — a plainer background helps.'
+            : !back && !backSrc
+              ? 'Optional — for pieces with something on the back.'
+              : null;
+
   const photoNote =
-    src && srcIsNew
+    side === 'back'
+      ? backNote
+      : src && srcIsNew
       ? autoStudio && !studio.paused
         ? 'Saves right away — the studio version swaps in a few seconds later.'
         : 'Auto studio cleanup is off (Settings). Use Clean up closet when you like.'
@@ -146,42 +193,89 @@ export function ItemForm({ item, defaultCategory = 'Top', onClose }: { item?: Cl
         </button>
       }
     >
-      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: photoNote || error ? 8 : 18 }}>
-        <button type="button" className="photo-well" style={{ width: 132, background: src === undefined && cutout ? STUDIO : undefined }} aria-label="Add photo" onClick={() => fileRef.current?.click()}>
-          {preview ? <img src={preview} alt="" /> : src === null ? <ItemPhoto /> : <ItemPhoto photoId={photoId} cutout={cutout} />}
-          {src === undefined && beingWorkedOn && (
-            <span style={{ position: 'absolute', inset: 0, background: 'rgba(17,17,17,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span className="spinner" aria-hidden />
-            </span>
-          )}
-        </button>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <button type="button" className="text-btn" style={{ textAlign: 'left' }} onClick={() => fileRef.current?.click()}>
-            {photoId || preview ? 'Change photo' : 'Add photo'}
-          </button>
-          {!studio.paused && src === undefined && photoId && !cutout && !pending && (
+      <div role="tablist" aria-label="Photo side" style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
+        {(['front', 'back'] as const).map((s) => {
+          const on = side === s;
+          const has = s === 'front' ? !!(photoId || preview) && src !== null : !!(back || backPreview) && backSrc !== null;
+          return (
             <button
+              key={s}
               type="button"
-              className="text-btn"
-              style={{ textAlign: 'left' }}
-              onClick={() => setDraft((d) => ({ ...d, photoPending: true, studioFailed: false }))}
+              role="tab"
+              aria-selected={on}
+              className="label"
+              onClick={() => setSide(s)}
+              style={{ padding: '6px 0 5px', color: on ? 'var(--ink)' : 'var(--muted)', boxShadow: on ? 'inset 0 -2px 0 var(--accent)' : 'none' }}
             >
-              Make studio photo
+              {s === 'front' ? 'Front' : has ? 'Back' : '+ Back'}
             </button>
-          )}
-          {src === undefined && photoId && cutout && (
-            <button type="button" className="text-btn muted" style={{ textAlign: 'left' }} onClick={restoreOriginal}>
-              Restore original
-            </button>
-          )}
-          {(photoId || preview) && src !== null && (
-            <button type="button" className="text-btn muted" style={{ textAlign: 'left' }} onClick={() => setSrc(null)}>
-              Remove photo
-            </button>
-          )}
-        </div>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
+          );
+        })}
       </div>
+      {side === 'back' ? (
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: photoNote || error ? 8 : 18 }}>
+          <button type="button" className="photo-well" style={{ width: 132, background: backSrc === undefined && back?.cutout ? STUDIO : undefined }} aria-label="Add back photo" onClick={() => fileRef.current?.click()}>
+            {backPreview ? <img src={backPreview} alt="" /> : backSrc === null ? <ItemPhoto /> : <ItemPhoto photoId={back?.photoId} cutout={back?.cutout} />}
+            {backSrc === undefined && backWorkedOn && (
+              <span style={{ position: 'absolute', inset: 0, background: 'rgba(17,17,17,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span className="spinner" aria-hidden />
+              </span>
+            )}
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <button type="button" className="text-btn" style={{ textAlign: 'left' }} onClick={() => fileRef.current?.click()}>
+              {(back && backSrc !== null) || backPreview ? 'Change back photo' : 'Add back photo'}
+            </button>
+            {!studio.paused && backSrc === undefined && back && !back.cutout && !backPending && (
+              <button type="button" className="text-btn" style={{ textAlign: 'left' }} onClick={() => setDraft((d) => ({ ...d, back: { ...back, pending: true, failed: false } }))}>
+                Make studio photo
+              </button>
+            )}
+            {((back && backSrc !== null) || backPreview) && (
+              <button type="button" className="text-btn muted" style={{ textAlign: 'left' }} onClick={() => setBackSrc(back ? null : undefined)}>
+                Remove back photo
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: photoNote || error ? 8 : 18 }}>
+          <button type="button" className="photo-well" style={{ width: 132, background: src === undefined && cutout ? STUDIO : undefined }} aria-label="Add photo" onClick={() => fileRef.current?.click()}>
+            {preview ? <img src={preview} alt="" /> : src === null ? <ItemPhoto /> : <ItemPhoto photoId={photoId} cutout={cutout} />}
+            {src === undefined && beingWorkedOn && (
+              <span style={{ position: 'absolute', inset: 0, background: 'rgba(17,17,17,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span className="spinner" aria-hidden />
+              </span>
+            )}
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <button type="button" className="text-btn" style={{ textAlign: 'left' }} onClick={() => fileRef.current?.click()}>
+              {photoId || preview ? 'Change photo' : 'Add photo'}
+            </button>
+            {!studio.paused && src === undefined && photoId && !cutout && !pending && (
+              <button
+                type="button"
+                className="text-btn"
+                style={{ textAlign: 'left' }}
+                onClick={() => setDraft((d) => ({ ...d, photoPending: true, studioFailed: false }))}
+              >
+                Make studio photo
+              </button>
+            )}
+            {src === undefined && photoId && cutout && (
+              <button type="button" className="text-btn muted" style={{ textAlign: 'left' }} onClick={restoreOriginal}>
+                Restore original
+              </button>
+            )}
+            {(photoId || preview) && src !== null && (
+              <button type="button" className="text-btn muted" style={{ textAlign: 'left' }} onClick={() => setSrc(null)}>
+                Remove photo
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
       {error && <p style={{ color: '#c62f3c', fontWeight: 600, fontSize: 12, margin: '0 0 16px', lineHeight: 1.4 }}>{error}</p>}
       {!error && photoNote && (
         <p className="muted" style={{ fontSize: 12, fontWeight: 600, margin: '0 0 16px', lineHeight: 1.4 }}>

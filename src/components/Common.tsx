@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { textOn } from '../color';
 import { getPhoto } from '../db';
-import type { ClothingItem } from '../types';
+import type { ClothingItem, Side } from '../types';
 import { GearIcon, PhotoPlaceholder } from './Icons';
 
 // Settings and the location picker live at app level; any screen can open them.
@@ -43,9 +43,10 @@ export function usePhotoUrl(photoId?: string) {
 export const STUDIO = '#E4E2DC';
 
 /** How a piece should be drawn: studio cutout, ordinary photo, or its color when there's no photo. */
-export function useLook(item: ClothingItem) {
-  const url = usePhotoUrl(item.photoId);
-  if (url && item.photoCutout) return { url, studio: true, bg: STUDIO, fg: '#111111' };
+export function useLook(item: ClothingItem, side: Side = 'front') {
+  const back = side === 'back' ? item.back : undefined;
+  const url = usePhotoUrl(back ? back.photoId : item.photoId);
+  if (url && (back ? back.cutout : item.photoCutout)) return { url, studio: true, bg: STUDIO, fg: '#111111' };
   if (url) return { url, studio: false, bg: '#111111', fg: '#FFFFFF' };
   return { url: undefined, studio: false, bg: item.color.hex, fg: textOn(item.color.hex) };
 }
@@ -55,8 +56,8 @@ export function useLook(item: ClothingItem) {
  * with a soft shadow; `label` leaves room at the bottom for a name. Ordinary photos cover the tile,
  * with an optional shade so white text stays readable.
  */
-export function PieceImage({ item, label = false, shade = 'none' }: { item: ClothingItem; label?: boolean; shade?: 'none' | 'bottom' | 'both' }) {
-  const { url, studio } = useLook(item);
+export function PieceImage({ item, label = false, shade = 'none', side = 'front' }: { item: ClothingItem; label?: boolean; shade?: 'none' | 'bottom' | 'both'; side?: Side }) {
+  const { url, studio } = useLook(item, side);
   if (!url) return null;
   if (studio)
     return (
