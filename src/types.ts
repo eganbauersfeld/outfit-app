@@ -70,7 +70,19 @@ export interface WearLogEntry {
   source: 'manual' | 'suggested';
   /** Feels-like range during the day it was worn, stamped when logged (lets the engine learn his comfort). */
   weather?: { feelsMin: number; feelsMax: number };
+  /** A day can have several fits ("Day", "Night out"…). Each entry is one fit. */
+  label?: string;
+  /** Orders a day's fits; older single-fit entries lack it and count as the first. */
+  createdAt?: number;
 }
+
+/** A day's fits, first to last. */
+export function fitsOn(logs: WearLogEntry[], date: string): WearLogEntry[] {
+  return logs.filter((l) => l.date === date).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+}
+
+/** What to call a fit when it has no name. */
+export const fitName = (fit: Pick<WearLogEntry, 'label'>, index: number) => fit.label || (index === 0 ? 'Day' : `Fit ${index + 1}`);
 
 /** A reaction to a suggested outfit; the engine learns which pairings he likes. */
 export interface Feedback {

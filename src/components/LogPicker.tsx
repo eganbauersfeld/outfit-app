@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { lastWorn } from '../stats';
-import { useStore } from '../store';
+import { useStore, type FitRef } from '../store';
 import type { Category } from '../types';
 import { ItemPhoto, Sheet } from './Common';
 import { CheckIcon, PlusIcon } from './Icons';
 
 /** Pick which closet pieces in one category were worn on `date`. Multi-select. */
-export function LogPicker({ category, label, date, onClose, onAddNew }: { category: Category; label: string; date: string; onClose: () => void; onAddNew: () => void }) {
+export function LogPicker({ category, label, fit, onClose, onAddNew }: { category: Category; label: string; fit: FitRef; onClose: () => void; onAddNew: () => void }) {
   const { items, logs, toggleLogged } = useStore();
-  const logged = new Set(logs.filter((l) => l.date === date).flatMap((l) => l.itemIds));
+  const logged = new Set(logs.find((l) => l.id === fit.id)?.itemIds ?? []);
   // Most recently worn first — the usual suspects are at the top. The order is fixed when
   // the sheet opens so tiles don't jump around as today's picks change it.
   const [order] = useState(() => {
@@ -32,7 +32,7 @@ export function LogPicker({ category, label, date, onClose, onAddNew }: { catego
         {list.map((item) => {
           const on = logged.has(item.id);
           return (
-            <button key={item.id} type="button" aria-pressed={on} onClick={() => toggleLogged(date, item.id)} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <button key={item.id} type="button" aria-pressed={on} onClick={() => toggleLogged(fit, item.id)} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div className="photo-well" style={on ? { boxShadow: 'inset 0 0 0 3px var(--ink)' } : undefined}>
                 <ItemPhoto photoId={item.photoId} cutout={item.photoCutout} />
                 {on && (

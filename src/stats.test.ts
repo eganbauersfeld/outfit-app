@@ -37,4 +37,11 @@ describe('uniqueness', () => {
     expect(uniquenessScore(logs, byId, TODAY)).toEqual({ value: 50, scope: 'week' }); // 100 then 0
     expect(uniquenessScore([], byId, TODAY)).toBeNull();
   });
+
+  it('a second fit the same day is scored against the first', () => {
+    const day = { ...log(TODAY, ['t-white', 'b-jeans', 's-white']), createdAt: 1 };
+    const night = (ids: string[]) => ({ ...log(TODAY, ids), id: `log-${TODAY}-n`, createdAt: 2, label: 'Night out' });
+    expect(uniquenessScore([day, night(['t-black', 'b-chinos', 's-boots'])], byId, TODAY)).toEqual({ value: 100, scope: 'today' });
+    expect(uniquenessScore([day, night(['t-white', 'b-jeans', 's-white'])], byId, TODAY)!.value).toBe(0);
+  });
 });

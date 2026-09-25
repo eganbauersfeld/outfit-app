@@ -3,7 +3,7 @@ import { makeCutout } from './cutout';
 import * as db from './db';
 import { dayProfile } from './engine/day';
 import { todayKey } from './dates';
-import { originalPhotoKey, type ClothingItem, type Feedback, type WearLogEntry } from './types';
+import { fitsOn, originalPhotoKey, type ClothingItem, type Feedback, type WearLogEntry } from './types';
 import { readCachedWeather } from './weather';
 
 // Crash guard for studio photos. Before a photo is processed its piece id is written down; it's
@@ -25,8 +25,12 @@ interface Store {
   /** photo: new display photo (null removes it). original: the untouched photo, kept when `photo` is a studio cutout. */
   saveItem: (item: ClothingItem, photo?: Blob | null, original?: Blob) => Promise<void>;
   removeItem: (item: ClothingItem) => Promise<void>;
-  toggleLogged: (date: string, itemId: string) => Promise<void>;
-  logOutfit: (date: string, itemIds: string[]) => Promise<void>;
+  /** Add or remove a piece from one fit. `fit` may be a new, not-yet-saved fit ({ id, date, label }). */
+  toggleLogged: (fit: FitRef, itemId: string) => Promise<void>;
+  /** "Wear this" from Ideas: replace the day's first fit, or add the outfit as another fit. */
+  logOutfit: (date: string, itemIds: string[], asNewFit?: boolean) => Promise<void>;
+  renameFit: (id: string, label: string) => Promise<void>;
+  deleteFit: (id: string) => Promise<void>;
   react: (itemIds: string[], verdict: Feedback['verdict']) => Promise<void>;
   reload: () => Promise<void>;
   studio: StudioStatus;
@@ -35,6 +39,11 @@ interface Store {
   /** Turn studio photos back on after the crash guard paused them. */
   resumeStudio: () => void;
 }
+
+export type FitRef = { id: string; date: string; label?: string; createdAt?: number };
+
+/** A fresh id for another fit on `date`. */
+export const newFitId = (date: string) => `log-${date}-${Date.now().toString(36)}`;
 
 export interface StudioStatus {
   /** Photos still waiting (including the one being worked on). */
@@ -127,31 +136,61 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setItems((prev) => prev.filter((p) => p.id !== item.id));
   }, []);
 
-  // One manual entry per day, keyed by date.
+  // Each fit is one entry. A fit with no pieces left is removed (no empty fits in the log).
   const toggleLogged = useCallback(
-    async (date: string, itemId: string) => {
-      const id = `log-${date}`;
-      const existing = logs.find((l) => l.id === id);
+    async (fit: FitRef, itemId: string) => {
+      const existing = logs.find((l) => l.id === fit.id);
       const itemIds = existing?.itemIds.includes(itemId)
         ? existing.itemIds.filter((x) => x !== itemId)
         : [...(existing?.itemIds ?? []), itemId];
       if (itemIds.length === 0) {
-        await db.deleteLog(id);
-        setLogs((prev) => prev.filter((l) => l.id !== id));
+        await db.deleteLog(fit.id);
+        setLogs((prev) => prev.filter((l) => l.id !== fit.id));
         return;
       }
-      const entry: WearLogEntry = { id, date, itemIds, source: existing?.source ?? 'manual', weather: existing?.weather ?? weatherStamp(date) };
+      const entry: WearLogEntry = {
+        id: fit.id,
+        date: fit.date,
+        itemIds,
+        source: existing?.source ?? 'manual',
+        weather: existing?.weather ?? weatherStamp(fit.date),
+        label: existing?.label ?? fit.label,
+        createdAt: existing?.createdAt ?? fit.createdAt ?? Date.now(),
+      };
       await db.putLog(entry);
-      setLogs((prev) => [...prev.filter((l) => l.id !== id), entry]);
+      setLogs((prev) => [...prev.filter((l) => l.id !== fit.id), entry]);
     },
     [logs],
   );
 
-  // "Wear this" from Ideas: the day's log becomes exactly this outfit.
-  const logOutfit = useCallback(async (date: string, itemIds: string[]) => {
-    const entry: WearLogEntry = { id: `log-${date}`, date, itemIds, source: 'suggested', weather: weatherStamp(date) };
-    await db.putLog(entry);
-    setLogs((prev) => [...prev.filter((l) => l.id !== entry.id), entry]);
+  const logOutfit = useCallback(
+    async (date: string, itemIds: string[], asNewFit = false) => {
+      const day = fitsOn(logs, date);
+      const first = day[0];
+      const entry: WearLogEntry =
+        asNewFit || !first
+          ? { id: first ? newFitId(date) : `log-${date}`, date, itemIds, source: 'suggested', weather: weatherStamp(date), createdAt: Date.now(), label: first ? `Fit ${day.length + 1}` : undefined }
+          : { ...first, itemIds, source: 'suggested' };
+      await db.putLog(entry);
+      setLogs((prev) => [...prev.filter((l) => l.id !== entry.id), entry]);
+    },
+    [logs],
+  );
+
+  const renameFit = useCallback(
+    async (id: string, label: string) => {
+      const existing = logs.find((l) => l.id === id);
+      if (!existing) return;
+      const entry = { ...existing, label: label.trim() || undefined };
+      await db.putLog(entry);
+      setLogs((prev) => prev.map((l) => (l.id === id ? entry : l)));
+    },
+    [logs],
+  );
+
+  const deleteFit = useCallback(async (id: string) => {
+    await db.deleteLog(id);
+    setLogs((prev) => prev.filter((l) => l.id !== id));
   }, []);
 
   // 👍 / "not for me" on a suggested outfit — the stylist learns pairings from these.
@@ -241,8 +280,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload, studio, cleanUpCloset, resumeStudio }),
-    [ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, react, reload, studio, cleanUpCloset, resumeStudio],
+    () => ({ ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, renameFit, deleteFit, react, reload, studio, cleanUpCloset, resumeStudio }),
+    [ready, items, logs, feedback, itemsById, saveItem, removeItem, toggleLogged, logOutfit, renameFit, deleteFit, react, reload, studio, cleanUpCloset, resumeStudio],
   );
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }

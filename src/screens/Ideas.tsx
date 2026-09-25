@@ -4,7 +4,7 @@ import { WeatherGlyph } from '../components/Icons';
 import { todayKey } from '../dates';
 import { rankSwaps, starter as makeStarter, suggest, type Suggestion } from '../engine/stylist';
 import { useStore } from '../store';
-import type { Category, ClothingItem } from '../types';
+import { fitsOn, type Category, type ClothingItem } from '../types';
 import { useWeather } from '../weather';
 
 // The key feature: start him off with a weather-shaped nudge, then — only if he wants —
@@ -87,7 +87,7 @@ export function Ideas() {
     setSaved({ ...saved, combos });
   };
 
-  const todaysLog = logs.find((l) => l.date === todayKey());
+  const todaysFits = fitsOn(logs, todayKey());
 
   return (
     <>
@@ -176,12 +176,14 @@ export function Ideas() {
           index={n}
           combo={c}
           itemsById={itemsById}
-          worn={!!todaysLog && todaysLog.itemIds.length === c.itemIds.length && c.itemIds.every((id) => todaysLog.itemIds.includes(id))}
+          worn={todaysFits.some((f) => f.itemIds.length === c.itemIds.length && c.itemIds.every((id) => f.itemIds.includes(id)))}
           liked={feedback.some((f) => f.verdict === 'like' && f.itemIds.length === c.itemIds.length && c.itemIds.every((id) => f.itemIds.includes(id)))}
           onSwap={(id) => swap(n, id)}
           onWear={async () => {
-            if (todaysLog?.itemIds.length && !confirm('Replace what you already logged today with this outfit?')) return;
-            await logOutfit(todayKey(), c.itemIds);
+            // Already logged today: this is another fit (going out, the gym…), not a replacement.
+            const another = todaysFits.some((f) => f.itemIds.length);
+            if (another && !confirm('Log this as another fit today? What you already logged stays.')) return;
+            await logOutfit(todayKey(), c.itemIds, another);
           }}
           onLike={() => react(c.itemIds, 'like')}
           onDislike={async () => {

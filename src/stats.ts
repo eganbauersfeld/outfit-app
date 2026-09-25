@@ -41,29 +41,43 @@ export function outfitSimilarity(a: ClothingItem[], b: ClothingItem[]): number {
   return union ? shared / union : 0;
 }
 
-/** 0–100: how different the outfit worn on `date` is from its closest match in the 60 days before. */
-export function outfitUniqueness(date: string, worn: Map<string, ClothingItem[]>, windowDays = 60): number | null {
-  const outfit = worn.get(date);
-  if (!outfit?.length) return null;
-  const from = addDays(date, -windowDays);
+export interface WornFit {
+  id: string;
+  date: string;
+  label?: string;
+  items: ClothingItem[];
+}
+
+/** Every logged fit with its pieces, oldest first (a day's fits in the order they were logged). */
+export function wornFits(logs: WearLogEntry[], itemsById: Map<string, ClothingItem>): WornFit[] {
+  return [...logs]
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt ?? 0) - (b.createdAt ?? 0)))
+    .map((l) => ({ id: l.id, date: l.date, label: l.label, items: l.itemIds.map((id) => itemsById.get(id)).filter((i) => !!i) }))
+    .filter((f) => f.items.length > 0);
+}
+
+/** 0–100: how different fits[index] is from its closest match among earlier fits (same day included) in the 60 days before. */
+export function fitUniqueness(fits: WornFit[], index: number, windowDays = 60): number {
+  const fit = fits[index];
+  const from = addDays(fit.date, -windowDays);
   let closest = 0;
-  for (const [d, other] of worn) {
-    if (d >= date || d < from || !other.length) continue;
-    closest = Math.max(closest, outfitSimilarity(outfit, other));
+  for (let j = 0; j < index; j++) {
+    if (fits[j].date < from) continue;
+    closest = Math.max(closest, outfitSimilarity(fit.items, fits[j].items));
   }
   return Math.round((1 - closest) * 100);
 }
 
-/** Today's uniqueness once he's logged, otherwise the average of his last 7 logged days. */
+/** Today's latest fit once he's logged, otherwise the average of his last 7 fits. */
 export function uniquenessScore(logs: WearLogEntry[], itemsById: Map<string, ClothingItem>, today = todayKey()): { value: number; scope: 'today' | 'week' } | null {
-  const worn = wornByDate(logs, itemsById);
-  const todays = outfitUniqueness(today, worn);
-  if (todays !== null) return { value: todays, scope: 'today' };
-  const recent = [...worn.keys()]
-    .filter((d) => d < today && worn.get(d)!.length)
-    .sort()
+  const fits = wornFits(logs, itemsById);
+  const latest = fits.findLastIndex((f) => f.date === today);
+  if (latest >= 0) return { value: fitUniqueness(fits, latest), scope: 'today' };
+  const recent = fits
+    .map((f, i) => (f.date < today ? i : -1))
+    .filter((i) => i >= 0)
     .slice(-7)
-    .map((d) => outfitUniqueness(d, worn)!);
+    .map((i) => fitUniqueness(fits, i));
   return recent.length ? { value: Math.round(recent.reduce((s, v) => s + v, 0) / recent.length), scope: 'week' } : null;
 }
 

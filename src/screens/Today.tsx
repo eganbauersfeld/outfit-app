@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { textOn } from '../color';
-import { idx, openLocation, SettingsButton, STUDIO, usePhotoUrl } from '../components/Common';
+import { idx, openLocation, Sheet, SettingsButton, STUDIO, usePhotoUrl } from '../components/Common';
 import { WeatherGlyph } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
 import { LogPicker } from '../components/LogPicker';
@@ -8,8 +8,8 @@ import { todayKey } from '../dates';
 import { starter as makeStarter } from '../engine/stylist';
 import { useQuote } from '../quotes';
 import { dayStreak, uniquenessScore } from '../stats';
-import { useStore } from '../store';
-import { CATEGORIES, type Category, type ClothingItem } from '../types';
+import { newFitId, useStore, type FitRef } from '../store';
+import { CATEGORIES, fitName, fitsOn, type Category, type ClothingItem } from '../types';
 import { useWeather } from '../weather';
 
 const TILE_LABEL: Record<Category, string> = { Top: 'Top', Bottom: 'Bottom', Outerwear: 'Outerwear', Shoes: 'Shoes', Sunglasses: 'Shades', Misc: 'Misc.' };
@@ -18,6 +18,10 @@ export function Today() {
   const { items, logs, feedback, itemsById } = useStore();
   const { status, weather, error, needsLocation, denied, refresh } = useWeather();
   const [picker, setPicker] = useState<Category | null>(null);
+  // Several fits a day: fits made here but not logged into yet live only in this screen's state.
+  const [drafts, setDrafts] = useState<FitRef[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [fitSheet, setFitSheet] = useState<'new' | string | null>(null);
   const [newIn, setNewIn] = useState<Category | null>(null);
   const quoteBox = useRef<HTMLDivElement>(null);
   const quoteCard = useRef<HTMLElement>(null);
@@ -36,7 +40,13 @@ export function Today() {
   }, [checkQuote]);
 
   const today = todayKey();
-  const todays = logs.filter((l) => l.date === today).flatMap((l) => l.itemIds.map((id) => itemsById.get(id)).filter((i) => !!i));
+  const saved = fitsOn(logs, today);
+  const fits: FitRef[] = [...saved, ...drafts.filter((d) => d.date === today && !saved.some((s) => s.id === d.id))];
+  if (!fits.length) fits.push({ id: `log-${today}`, date: today });
+  // The newest fit is the one he's most likely logging right now.
+  const active = fits.find((f) => f.id === activeId) ?? fits[fits.length - 1];
+  const activeIndex = fits.indexOf(active);
+  const todays = (saved.find((s) => s.id === active.id)?.itemIds ?? []).map((id) => itemsById.get(id)).filter((i) => !!i);
   const streak = useMemo(() => dayStreak(logs, today), [logs, today]);
   const unique = useMemo(() => uniquenessScore(logs, itemsById, today), [logs, itemsById, today]);
   const quote = useQuote();
@@ -132,10 +142,36 @@ export function Today() {
         </button>
       </section>
 
-      <div style={{ padding: '14px 20px 6px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <span className="label">Today’s fit</span>
-        <span className="label muted">
-          {String(todays.length).padStart(2, '0')} {todays.length === 1 ? 'piece' : 'pieces'}
+      <div style={{ padding: '8px 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 38 }}>
+        {fits.length <= 1 ? (
+          <span className="label">Today’s fit</span>
+        ) : (
+          <div className="hscroll" role="tablist" style={{ gap: 16, minWidth: 0 }}>
+            {fits.map((f, i) => {
+              const on = f.id === active.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  className="label"
+                  onClick={() => (on ? setFitSheet(f.id) : setActiveId(f.id))}
+                  style={{ flexShrink: 0, padding: '8px 0 6px', color: on ? 'var(--ink)' : 'var(--muted)', boxShadow: on ? 'inset 0 -2px 0 var(--accent)' : 'none' }}
+                >
+                  {fitName(f, i)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          <span className="label muted">
+            {String(todays.length).padStart(2, '0')} {todays.length === 1 ? 'piece' : 'pieces'}
+          </span>
+          <button type="button" className="label" onClick={() => setFitSheet('new')} style={{ padding: '8px 0 6px' }} aria-label="Add another fit today">
+            + Fit
+          </button>
         </span>
       </div>
 
@@ -165,8 +201,8 @@ export function Today() {
       {picker && (
         <LogPicker
           category={picker}
-          label={TILE_LABEL[picker]}
-          date={today}
+          label={fits.length > 1 ? `${TILE_LABEL[picker]} · ${fitName(active, activeIndex)}` : TILE_LABEL[picker]}
+          fit={active}
           onClose={() => setPicker(null)}
           onAddNew={() => {
             setNewIn(picker);
@@ -183,7 +219,95 @@ export function Today() {
           }}
         />
       )}
+      {fitSheet && (
+        <FitSheet
+          fit={fitSheet === 'new' ? null : (fits.find((f) => f.id === fitSheet) ?? null)}
+          index={fitSheet === 'new' ? fits.length : fits.findIndex((f) => f.id === fitSheet)}
+          saved={fitSheet !== 'new' && saved.some((s) => s.id === fitSheet)}
+          onCreate={(label) => {
+            const f: FitRef = { id: newFitId(today), date: today, label, createdAt: Date.now() };
+            // The first fit of the day may exist only implicitly; give it a real place first.
+            setDrafts((d) => [...d, ...(saved.length || fits.length > 1 ? [] : [{ ...fits[0], createdAt: 0 }]), f]);
+            setActiveId(f.id);
+          }}
+          onRename={(id, label) => setDrafts((d) => d.map((x) => (x.id === id ? { ...x, label } : x)))}
+          onDelete={(id) => {
+            setDrafts((d) => d.filter((x) => x.id !== id));
+            setActiveId(null);
+          }}
+          onClose={() => setFitSheet(null)}
+        />
+      )}
     </div>
+  );
+}
+
+const FIT_NAMES = ['Night out', 'Work', 'Gym', 'Dinner', 'Date', 'Errands'];
+
+/** Name a new fit, or rename / delete one. */
+function FitSheet({
+  fit,
+  index,
+  saved,
+  onCreate,
+  onRename,
+  onDelete,
+  onClose,
+}: {
+  fit: FitRef | null;
+  index: number;
+  saved: boolean;
+  onCreate: (label: string) => void;
+  onRename: (id: string, label: string) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  const { renameFit, deleteFit } = useStore();
+  const [custom, setCustom] = useState('');
+  const current = fit ? fitName(fit, index) : '';
+  const choose = async (label: string) => {
+    if (!fit) onCreate(label);
+    else if (saved) await renameFit(fit.id, label);
+    else onRename(fit.id, label);
+    onClose();
+  };
+  return (
+    <Sheet title={fit ? current : 'Another fit'} onClose={onClose}>
+      <p className="muted" style={{ fontSize: 13, fontWeight: 600, margin: '0 0 12px', lineHeight: 1.4 }}>
+        {fit ? 'Rename this fit, or remove it.' : 'Going out, changing for work or the gym? Log it as its own fit.'}
+      </p>
+      <div className="seg" style={{ marginBottom: 16 }}>
+        {(index === 0 ? ['Day', ...FIT_NAMES] : FIT_NAMES).map((n) => (
+          <button key={n} type="button" className="chip" aria-pressed={n === current} onClick={() => choose(n)}>
+            {n}
+          </button>
+        ))}
+      </div>
+      <form
+        className="field"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (custom.trim()) choose(custom.trim());
+        }}
+      >
+        <span className="sublabel">Or name it</span>
+        <input className="input" value={custom} placeholder="e.g. Wedding" onChange={(e) => setCustom(e.target.value)} enterKeyHint="done" />
+      </form>
+      {fit && index > 0 && (
+        <button
+          type="button"
+          className="text-btn danger"
+          onClick={async () => {
+            if (saved && !confirm(`Remove “${current}” from today? The pieces stay in your closet.`)) return;
+            if (saved) await deleteFit(fit.id);
+            onDelete(fit.id);
+            onClose();
+          }}
+        >
+          Remove this fit
+        </button>
+      )}
+    </Sheet>
   );
 }
 
