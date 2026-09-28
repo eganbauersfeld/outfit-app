@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import { PieceImage, SettingsButton } from '../components/Common';
+import { Artwork } from '../components/Artwork';
+import { SettingsButton } from '../components/Common';
+import { DayView } from '../components/DayView';
 import { fromKey, shortLabel, todayKey } from '../dates';
 import { galleryWeeks, wornFits, type WornFit } from '../stats';
 import { useStore } from '../store';
-import { fitName, type ClothingItem } from '../types';
+import { fitName } from '../types';
 
 // Laid out like a record-label discography: accent band up top, full-bleed square sleeves below.
 // Until daily fit photos exist, each day's sleeve is built from the pieces worn that day.
@@ -18,7 +20,9 @@ export function Gallery() {
   const weeks = galleryWeeks(6);
   const today = todayKey();
   const fits = weeks.flatMap((w) => w.days).reduce((n, d) => n + (worn.get(d)?.length ?? 0), 0);
-  const [open, setOpen] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+  // Logged days, newest first — the order the day view swipes through.
+  const loggedDays = weeks.flatMap((w) => w.days).filter((d) => worn.get(d)?.length);
 
   return (
     <>
@@ -46,7 +50,7 @@ export function Gallery() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
               {w.days.map((d) => (
-                <Sleeve key={d} date={d} fits={worn.get(d) ?? []} isToday={d === today} open={open === d} onToggle={() => setOpen(open === d ? null : d)} />
+                <Sleeve key={d} date={d} fits={worn.get(d) ?? []} isToday={d === today} onOpen={() => setViewing(d)} />
               ))}
               {/* Close out the last row with blank black sleeves so the grid stays solid. */}
               {Array.from({ length: (3 - (w.days.length % 3)) % 3 }, (_, i) => (
@@ -57,14 +61,15 @@ export function Gallery() {
         );
       })}
       <div style={{ height: 24 }} />
+      {viewing && <DayView dates={loggedDays} date={viewing} onDate={setViewing} onClose={() => setViewing(null)} />}
     </>
   );
 }
 
-function Sleeve({ date, fits, isToday, open, onToggle }: { date: string; fits: WornFit[]; isToday: boolean; open: boolean; onToggle: () => void }) {
+function Sleeve({ date, fits, isToday, onOpen }: { date: string; fits: WornFit[]; isToday: boolean; onOpen: () => void }) {
   const weekday = fromKey(date).toLocaleDateString('en-US', { weekday: 'short' });
   const label = shortLabel(date);
-  // The sleeve shows the day's first fit; the rest are listed when it's opened.
+  // The sleeve shows the day's first fit; the others are a tap away in the day view.
   const items = fits[0]?.items ?? [];
 
   if (items.length === 0) {
@@ -92,7 +97,7 @@ function Sleeve({ date, fits, isToday, open, onToggle }: { date: string; fits: W
   }
 
   return (
-    <button type="button" onClick={onToggle} aria-expanded={open} aria-label={`${weekday} ${label}: ${fits.map((f, n) => `${fitName(f, n)}: ${f.items.map((i) => i.name).join(', ')}`).join('; ')}`} style={{ aspectRatio: '1', position: 'relative', overflow: 'hidden', display: 'block', background: '#111' }}>
+    <button type="button" onClick={onOpen} aria-label={`${weekday} ${label}: ${fits.map((f, n) => `${fitName(f, n)}: ${f.items.map((i) => i.name).join(', ')}`).join('; ')}`} style={{ aspectRatio: '1', position: 'relative', overflow: 'hidden', display: 'block', background: '#111' }}>
       <Artwork items={items} />
       {fits.length > 1 && (
         <span className="label" style={{ position: 'absolute', top: 6, right: 6, background: 'var(--accent)', color: 'var(--on-accent)', padding: '3px 7px', borderRadius: 999, fontSize: 8 }}>
@@ -108,78 +113,6 @@ function Sleeve({ date, fits, isToday, open, onToggle }: { date: string; fits: W
           {weekday}
         </span>
       </span>
-      {open && (
-        <span style={{ position: 'absolute', inset: 0, background: 'rgba(10,10,10,0.82)', color: '#f2f0ea', padding: 10, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 6 }}>
-          {fits.length === 1 ? (
-            <>
-              <span className="label" style={{ opacity: 0.6 }}>
-                {weekday} · {items.length} pcs
-              </span>
-              <PieceNames items={items} max={5} />
-            </>
-          ) : (
-            // Several fits: each one's name, then its pieces, kept short so they fit the square.
-            fits.slice(0, 3).map((f, n) => (
-              <span key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <span className="label" style={{ color: 'var(--accent)', fontSize: 8 }}>
-                  {fitName(f, n)}
-                </span>
-                <PieceNames items={f.items} max={fits.length === 2 ? 3 : 2} />
-              </span>
-            ))
-          )}
-        </span>
-      )}
     </button>
-  );
-}
-
-function PieceNames({ items, max }: { items: ClothingItem[]; max: number }) {
-  return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {items.slice(0, max).map((i) => (
-        <span key={i.id} style={{ fontSize: 11, fontWeight: 700, letterSpacing: '-0.01em', lineHeight: 1.15 }}>
-          {i.name}
-        </span>
-      ))}
-      {items.length > max && <span style={{ fontSize: 10, opacity: 0.6 }}>+{items.length - max} more</span>}
-    </span>
-  );
-}
-
-/** The day's pieces: photos in a mosaic when there are any, otherwise their colors as bands. */
-function Artwork({ items }: { items: ClothingItem[] }) {
-  const withPhotos = items.filter((i) => i.photoId).slice(0, 4);
-  if (withPhotos.length) {
-    const cols = withPhotos.length === 1 ? 1 : 2;
-    return (
-      <span style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gridAutoRows: '1fr', gap: 1, background: '#111' }}>
-        {withPhotos.map((i, n) => (
-          <PhotoCell key={i.id} item={i} span={withPhotos.length === 3 && n === 0} bottom={touchesBottom(withPhotos.length, n)} />
-        ))}
-      </span>
-    );
-  }
-  return (
-    <span style={{ position: 'absolute', inset: 0, display: 'flex' }}>
-      {items.map((i) => (
-        <span key={i.id} style={{ flex: 1, background: i.color.hex }} />
-      ))}
-    </span>
-  );
-}
-
-/** Cells along the bottom sit under the date strip, so cutouts there leave it room. */
-function touchesBottom(count: number, n: number) {
-  if (count <= 2) return true;
-  if (count === 3) return n === 0 || n === 2;
-  return n >= 2;
-}
-
-function PhotoCell({ item, span, bottom }: { item: ClothingItem; span: boolean; bottom: boolean }) {
-  return (
-    <span style={{ gridRow: span ? 'span 2' : undefined, background: '#1b1b1b', overflow: 'hidden', position: 'relative' }}>
-      <PieceImage item={item} label={bottom} />
-    </span>
   );
 }
