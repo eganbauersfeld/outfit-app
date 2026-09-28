@@ -98,7 +98,21 @@ export function setManualLocation(place: Place) {
   dispatchEvent(new Event(LOCATION_EVENT));
 }
 
+// iPhone home-screen apps don't remember location permission, so asking the device on every
+// open means a prompt on every open. The device is only asked when there's no saved spot yet, when
+// he taps "Use my location", or when the browser says permission is already granted (no prompt).
+let askDevice = false;
+
+async function locationGranted(): Promise<boolean> {
+  try {
+    return (await navigator.permissions?.query({ name: 'geolocation' }))?.state === 'granted';
+  } catch {
+    return false;
+  }
+}
+
 export function switchToDeviceLocation() {
+  askDevice = true;
   const loc = getSavedLocation();
   if (loc) writeJson(COORDS_KEY, { ...loc, name: undefined, source: 'device' });
   dispatchEvent(new Event(LOCATION_EVENT));
@@ -214,8 +228,9 @@ export function useWeather() {
     let locationProblem = false;
     try {
       let loc = getSavedLocation();
-      // A picked city wins; otherwise ask the device, falling back to the last known spot.
-      if (loc?.source !== 'manual') {
+      // A picked city wins; otherwise use the saved spot, asking the device only when it won't nag.
+      if (loc?.source !== 'manual' && (!loc || askDevice || (await locationGranted()))) {
+        askDevice = false;
         try {
           const pos = await getPosition();
           loc = { ...pos, source: 'device' };

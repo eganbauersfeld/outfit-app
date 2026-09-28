@@ -31,19 +31,18 @@ export function LocationSheet({ onClose }: { onClose: () => void }) {
         Now using: <span style={{ color: 'var(--ink)' }}>{saved?.source === 'manual' ? saved.name : 'current location'}</span>
       </p>
 
-      {saved?.source === 'manual' && (
-        <button
-          type="button"
-          className="primary-btn center"
-          style={{ marginBottom: 18 }}
-          onClick={() => {
-            switchToDeviceLocation();
-            onClose();
-          }}
-        >
-          Use my current location
-        </button>
-      )}
+      {/* The app reuses the saved spot instead of asking every time; this is how to refresh it. */}
+      <button
+        type="button"
+        className="primary-btn center"
+        style={{ marginBottom: 18 }}
+        onClick={() => {
+          switchToDeviceLocation();
+          onClose();
+        }}
+      >
+        {saved?.source === 'manual' ? 'Use my current location' : 'Update to where I am now'}
+      </button>
 
       <label className="field" style={{ marginBottom: 10 }}>
         <span className="sublabel">Search for a city</span>
