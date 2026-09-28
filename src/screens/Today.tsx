@@ -5,6 +5,7 @@ import { WeatherGlyph } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
 import { LogPicker } from '../components/LogPicker';
 import { todayKey } from '../dates';
+import { hourLabel } from '../engine/day';
 import { starter as makeStarter } from '../engine/stylist';
 import { useQuote } from '../quotes';
 import { dayStreak, uniquenessScore } from '../stats';
@@ -26,6 +27,7 @@ export function Today() {
   const quoteBox = useRef<HTMLDivElement>(null);
   const quoteCard = useRef<HTMLElement>(null);
   const [quoteFits, setQuoteFits] = useState(true);
+  const strip = useRef<HTMLDivElement>(null);
 
   // The screen never scrolls; the quote only shows when the space left over can hold it.
   const checkQuote = useCallback(() => {
@@ -54,6 +56,15 @@ export function Today() {
   const now = new Date();
   const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
   const monthDay = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const nowLabel = hourLabel(now.getHours());
+
+  // The strip runs 7AM–8PM; later in the day, start it at the current hour so the evening is in view.
+  const hourCount = weather?.hours.length ?? 0;
+  useEffect(() => {
+    const el = strip.current;
+    const cell = el?.querySelector<HTMLElement>('[data-now]');
+    if (el && cell) el.scrollLeft = cell.offsetLeft - el.offsetLeft;
+  }, [hourCount]);
 
   return (
     <div className="today">
@@ -116,10 +127,12 @@ export function Today() {
       </header>
 
       {weather && weather.hours.length > 0 && (
-        <div className="hscroll rule-t rule-b" style={{ margin: '0 20px' }}>
+        <div ref={strip} className="hscroll rule-t rule-b" style={{ margin: '0 20px' }}>
           {weather.hours.map((h, i) => (
-            <div key={h.time} style={{ flex: '1 0 46px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 0', borderLeft: i ? '1px solid var(--rule-soft)' : 'none' }}>
-              <span className="index">{h.time}</span>
+            <div key={h.time} data-now={h.time === nowLabel || undefined} style={{ flex: '1 0 46px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 0', borderLeft: i ? '1px solid var(--rule-soft)' : 'none' }}>
+              <span className="index" style={h.time === nowLabel ? { color: 'var(--ink)', boxShadow: 'inset 0 -2px 0 var(--accent)' } : undefined}>
+                {h.time === nowLabel ? 'Now' : h.time}
+              </span>
               <WeatherGlyph icon={h.icon} size={15} />
               <span style={{ fontWeight: 700, fontSize: 13 }}>{h.temp}°</span>
             </div>

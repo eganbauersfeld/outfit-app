@@ -161,11 +161,11 @@ async function fetchWeather(lat: number, lon: number): Promise<Weather> {
   if (!res.ok) throw new Error(`Weather ${res.status}`);
   const j = await res.json();
   const now = describe(j.current.weather_code);
-  // Hourly strip: 7AM–4PM local, per the design.
+  // Hourly strip: 7AM–8PM local, the whole day he's out.
   const hours: Weather['hours'] = [];
   (j.hourly.time as string[]).forEach((t, i) => {
     const h = Number(t.slice(11, 13));
-    if (h >= 7 && h <= 16) {
+    if (h >= 7 && h <= 20) {
       hours.push({ time: hourLabel(h), temp: Math.round(j.hourly.temperature_2m[i]), icon: describe(j.hourly.weather_code[i]).icon });
     }
   });

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { PieceImage, SettingsButton, useLook } from '../components/Common';
 import { PlusIcon } from '../components/Icons';
 import { ItemForm } from '../components/ItemForm';
+import { ItemView } from '../components/ItemView';
 import { daysSinceWorn, lastWorn } from '../stats';
 import { useSettings, useStore } from '../store';
 import { CATEGORIES, CATEGORY_PLURAL, type Category, type ClothingItem, type Side } from '../types';
@@ -20,6 +21,8 @@ export function Closet() {
   const [cat, setCat] = useState<Category | 'All'>('All');
   const [filters, setFilters] = useState<Set<Filter>>(new Set());
   const [editing, setEditing] = useState<ClothingItem | 'new' | null>(null);
+  // Tapping a piece opens it to look at; Edit from there opens the form on top.
+  const [viewing, setViewing] = useState<string | null>(null);
   const last = useMemo(() => lastWorn(logs), [logs]);
 
   const visible = items.filter(
@@ -100,12 +103,15 @@ export function Closet() {
       {visible.length > 0 && (
         <div className="hairgrid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
           {visible.map((item) => (
-            <Tile key={item.id} item={item} small={columns === 4} onClick={() => setEditing(item)} />
+            <Tile key={item.id} item={item} small={columns === 4} onClick={() => setViewing(item.id)} />
           ))}
         </div>
       )}
       <div style={{ height: 24 }} />
 
+      {viewing && !editing && visible.some((i) => i.id === viewing) && (
+        <ItemView items={visible} id={viewing} onId={setViewing} onEdit={setEditing} onClose={() => setViewing(null)} />
+      )}
       {editing && <ItemForm item={editing === 'new' ? undefined : editing} defaultCategory={cat === 'All' ? 'Top' : cat} onClose={() => setEditing(null)} />}
     </>
   );
